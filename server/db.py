@@ -11,9 +11,19 @@ if USE_PG:
     try:
         import psycopg
         from psycopg.rows import dict_row
+        from psycopg_pool import ConnectionPool
     except ImportError:
         raise SystemExit('P24_DB задан как PostgreSQL URL, но не установлен psycopg. '
-                         'Выполните: pip install "psycopg[binary]"')
+                         'Выполните: pip install "psycopg[binary,pool]"')
+
+    # Пул: подключение к Neon дорогое (~0.6–1с за коннект) — держим тёплые соединения.
+    # min_size=1 ещё и не даёт базе засыпать (постоянное активное соединение).
+    _pool = ConnectionPool(DB_DSN, min_size=1, max_size=4, open=False,
+                           kwargs={'row_factory': dict_row, 'connect_timeout': 15})
+
+    def _ensure_pool():
+        if _pool.closed:
+            _pool.open()
 
 SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -188,7 +198,8 @@ class _SqliteConn:
 
 class _PgConn:
     def __init__(self):
-        self.conn = psycopg.connect(DB_DSN, row_factory=dict_row)
+        _ensure_pool()
+        self.conn = _pool.getconn()
 
     def query(self, sql, args=(), one=False):
         cur = self.conn.execute(_conv(sql), list(args) if args else None)
@@ -217,7 +228,7 @@ class _PgConn:
         self.conn.commit()
 
     def close(self):
-        self.conn.close()
+        _pool.putconn(self.conn)
 
 
 def connect():
