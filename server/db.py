@@ -198,11 +198,13 @@ class _PgConn:
 
     def execute(self, sql, args=()):
         s = _conv(sql).strip()
+        has_returning = 'RETURNING' in s.upper()
         # Для INSERT нужно вернуть id (замена lastrowid у sqlite3)
-        if s.upper().startswith('INSERT') and 'RETURNING' not in s.upper():
+        if s.upper().startswith('INSERT') and not has_returning:
             s += ' RETURNING *'
+            has_returning = True
         cur = self.conn.execute(s, list(args) if args else None)
-        row = cur.fetchone()
+        row = cur.fetchone() if has_returning else None
         self.conn.commit()
         return (dict(row) if row else {}).get('id')
 
