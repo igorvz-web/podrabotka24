@@ -237,7 +237,14 @@ def api_auth(body: dict = None):
 
 @app.get('/api/health')
 def health():
-    return {'ok': True, 'time': now_ms()}
+    # Лёгкий запрос к БД, чтобы внешний пингер держал активными и Render, и базу (Neon)
+    db_ok = False
+    try:
+        db.query('SELECT 1')
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {'ok': True, 'db': db_ok, 'time': now_ms()}
 
 
 # --------------------------------------------------------------------------
