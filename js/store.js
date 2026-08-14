@@ -85,6 +85,14 @@
     });
   };
 
+  Store.refreshOrder = function (orderId) {
+    if (!Store.online) return Promise.resolve(Store.getOrder(orderId));
+    return API.call('GET', '/api/orders/' + encodeURIComponent(orderId)).then(function (o) {
+      Store.upsertOrder(o);
+      return o;
+    });
+  };
+
   function byTime(a, b) { return (b.created_at || 0) - (a.created_at || 0); }
 
   Store.upsertOrder = function (o) {

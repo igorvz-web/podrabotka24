@@ -27,6 +27,13 @@
       contentEl = U.el('div', { class: 'detail' });
       view.appendChild(contentEl);
       draw();
+
+      /* Перезагружаем заказ с сервера — чтобы не оставаться с устаревшим
+         статусом, если его изменил другой пользователь (завершил, назначил и т.п.). */
+      var showId = order.id;
+      Store.refreshOrder(showId).then(function (fresh) {
+        if (fresh && order && order.id === showId) { order = fresh; draw(); }
+      }).catch(function () {});
       return view;
     }
 
@@ -189,16 +196,26 @@
     }
 
     async function assign(r) {
-      order = await Store.assignResponse(order.id, r.id);
-      U.toast('Исполнитель назначен');
-      T.notify('success');
+      try {
+        order = await Store.assignResponse(order.id, r.id);
+        U.toast('Исполнитель назначен');
+        T.notify('success');
+      } catch (err) {
+        U.toast(err.message || 'Не удалось назначить исполнителя');
+        T.notify('error');
+      }
       draw();
     }
 
     async function reject(r) {
-      order = await Store.rejectResponse(order.id, r.id);
-      U.toast('Отклик отклонён');
-      T.impact('light');
+      try {
+        order = await Store.rejectResponse(order.id, r.id);
+        U.toast('Отклик отклонён');
+        T.impact('light');
+      } catch (err) {
+        U.toast(err.message || 'Не удалось отклонить отклик');
+        T.notify('error');
+      }
       draw();
     }
 
@@ -256,34 +273,60 @@
     }
 
     async function doRespond(msg) {
-      if (Store.me().blocked) { U.toast('Ваш аккаунт заблокирован модерацией'); T.notify('error'); return; }
-      order = await Store.respond(order.id, msg || '');
-      U.toast('Отклик отправлен');
-      T.notify('success');
+      try {
+        if (Store.me().blocked) { U.toast('Ваш аккаунт заблокирован модерацией'); T.notify('error'); return; }
+        order = await Store.respond(order.id, msg || '');
+        U.toast('Отклик отправлен');
+        T.notify('success');
+      } catch (err) {
+        U.toast(err.message || 'Не удалось отправить отклик');
+        T.notify('error');
+      }
       draw();
     }
 
     async function cancelResponse() {
-      order = await Store.cancelRespond(order.id);
-      U.toast('Отклик отменён');
-      T.impact('light');
+      try {
+        order = await Store.cancelRespond(order.id);
+        U.toast('Отклик отменён');
+        T.impact('light');
+      } catch (err) {
+        U.toast(err.message || 'Не удалось отменить отклик');
+        T.notify('error');
+      }
       draw();
+    }
+
+    function completeError(err) {
+      U.toast(err.message || 'Не удалось завершить заказ');
+      T.notify('error');
+      Store.refreshOrder(order.id).then(function (fresh) {
+        if (fresh) { order = fresh; draw(); }
+      }).catch(function () {});
     }
 
     async function completeAsAuthor() {
-      order = await Store.completeOrder(order.id);
-      U.toast('Заказ завершён');
-      T.notify('success');
-      draw();
-      openReview();
+      try {
+        order = await Store.completeOrder(order.id);
+        U.toast('Заказ завершён');
+        T.notify('success');
+        draw();
+        openReview();
+      } catch (err) {
+        completeError(err);
+      }
     }
 
     async function completeAsWorker() {
-      order = await Store.completeOrder(order.id);
-      U.toast('Заказ выполнен!');
-      T.notify('success');
-      draw();
-      openReview();
+      try {
+        order = await Store.completeOrder(order.id);
+        U.toast('Заказ выполнен!');
+        T.notify('success');
+        draw();
+        openReview();
+      } catch (err) {
+        completeError(err);
+      }
     }
 
     /* ---- Отзывы ---- */
