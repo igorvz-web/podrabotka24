@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -196,6 +197,7 @@ def order_payload(o):
         'authorPhoto': author.get('photo', '') or '',
         'created_at': o['created_at'],
         'status': o['status'],
+        'boostedUntil': o.get('boosted_until') or 0,
         'responses': responses,
         'reviews': reviews,
     }
@@ -616,6 +618,130 @@ def admin_unblock_user(user_id: int, uid: int = Depends(get_current_user)):
     db.execute('UPDATE users SET blocked=0 WHERE id=?', (user_id,))
     notify(user_id, 'Ваш аккаунт восстановлен модератором. Приятной работы!')
     return {'ok': True}
+
+
+# --------------------------------------------------------------------------
+# Платежи (Telegram Stars): продвижение заказа
+# --------------------------------------------------------------------------
+
+def _boost_price():
+    try:
+        return max(1, int(os.environ.get('BOOST_PRICE_STARS', '100')))
+    except Exception:
+        return 100
+
+
+@app.post('/api/orders/{order_id}/boost_invoice')
+def boost_invoice(order_id: str, uid: int = Depends(get_current_user)):
+    if not auth.BOT_TOKEN:
+        raise HTTPException(400, 'Продвижение доступно только в Telegram')
+    o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
+    if not o:
+        raise HTTPException(404, 'Заказ не найден')
+    if o['author_id'] != uid:
+        raise HTTPException(403, 'Поднять заказ может только его автор')
+    if o['status'] != 'open':
+        raise HTTPException(400, 'Продвигать можно только открытые заказы')
+    if o.get('boosted_until') and o['boosted_until'] > now_ms():
+        raise HTTPException(400, 'Заказ уже поднят — попробуйте позже')
+    payload = 'BOOST:' + order_id
+    body = {
+        'title': 'Поднять заказ',
+        'description': 'Подъём заказа наверх ленты на 24 часа',
+        'payload': payload,
+        'currency': 'XTR',
+        'prices': json.dumps([{'label': 'Поднять заказ', 'amount': _boost_price()}], ensure_ascii=False),
+    }
+    try:
+        req = urllib.request.Request(
+            'https://api.telegram.org/bot{}/createInvoiceLink'.format(auth.BOT_TOKEN),
+            data=urllib.parse.urlencode(body).encode(),
+            headers={'Content-Type': 'application/x-www-form-urlencoded'})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            resp = json.loads(r.read().decode('utf-8'))
+    except Exception:
+        raise HTTPException(502, 'Не удалось создать инвойс, попробуйте позже')
+    if not resp.get('ok') or not resp.get('result'):
+        raise HTTPException(502, 'Ошибка Telegram: ' + str(resp.get('description', '')))
+    return {'url': resp['result']}
+
+
+_STARS_OFFSET = 0
+
+
+def _stars_init_offset():
+    global _STARS_OFFSET
+    try:
+        r = db.query('SELECT COALESCE(MAX(update_id),0) AS m FROM stars_updates', one=True)
+        _STARS_OFFSET = int(r['m'] or 0)
+    except Exception:
+        _STARS_OFFSET = 0
+
+
+def _tg_call(method, params):
+    data = urllib.parse.urlencode(params).encode()
+    req = urllib.request.Request(
+        'https://api.telegram.org/bot{}/{}'.format(auth.BOT_TOKEN, method),
+        data=data, headers={'Content-Type': 'application/x-www-form-urlencoded'})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read().decode('utf-8'))
+
+
+def _apply_star_payment(update_id, payment):
+    payload = str(payment.get('invoice_payload', '') or '')
+    if not payload.startswith('BOOST:'):
+        return
+    order_id = payload[len('BOOST:'):]
+    try:
+        row = db.query('SELECT 1 FROM stars_updates WHERE update_id=?', (update_id,), one=True)
+        if row:
+            return
+        db.execute('INSERT INTO stars_updates (update_id, ts) VALUES (?,?)', (update_id, now_ms()))
+    except Exception:
+        return
+    o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
+    if not o:
+        return
+    db.execute('UPDATE orders SET boosted_until=? WHERE id=?', (now_ms() + 86400000, order_id))
+    notify(o['author_id'], 'Заказ «' + o['title'] + '» поднят в ленте на 24 часа')
+
+
+def _stars_poll_once():
+    global _STARS_OFFSET
+    if not auth.BOT_TOKEN:
+        return
+    url = ('https://api.telegram.org/bot{}/getUpdates?'.format(auth.BOT_TOKEN) +
+           urllib.parse.urlencode({'timeout': 2, 'offset': _STARS_OFFSET}))
+    try:
+        with urllib.request.urlopen(url, timeout=8) as r:
+            data = json.loads(r.read().decode('utf-8'))
+    except Exception:
+        return
+    for upd in data.get('result', []):
+        _STARS_OFFSET = max(_STARS_OFFSET, upd['update_id'] + 1)
+        try:
+            pq = upd.get('pre_checkout_query')
+            if pq:
+                _tg_call('answerPreCheckoutQuery', {'pre_checkout_query_id': pq['id'], 'ok': 'true'})
+            msg = upd.get('message') or {}
+            sp = msg.get('successful_payment')
+            if sp:
+                _apply_star_payment(upd['update_id'], sp)
+        except Exception:
+            pass
+
+
+def _stars_loop():
+    while True:
+        try:
+            _stars_poll_once()
+        except Exception:
+            pass
+        time.sleep(3)
+
+
+_stars_init_offset()
+threading.Thread(target=_stars_loop, daemon=True).start()
 
 
 # --------------------------------------------------------------------------

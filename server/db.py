@@ -53,7 +53,12 @@ CREATE TABLE IF NOT EXISTS orders (
   show_phone INTEGER, phone TEXT, datetime TEXT,
   author_id INTEGER NOT NULL, created_at INTEGER,
   status TEXT DEFAULT 'open',
-  accepted_response_id TEXT DEFAULT ''
+  accepted_response_id TEXT DEFAULT '',
+  boosted_until INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS stars_updates (
+  update_id INTEGER PRIMARY KEY,
+  ts INTEGER
 );
 CREATE TABLE IF NOT EXISTS responses (
   id TEXT PRIMARY KEY,
@@ -120,7 +125,12 @@ CREATE TABLE IF NOT EXISTS orders (
   show_phone INTEGER, phone TEXT, datetime TEXT,
   author_id INTEGER NOT NULL, created_at BIGINT,
   status TEXT DEFAULT 'open',
-  accepted_response_id TEXT DEFAULT ''
+  accepted_response_id TEXT DEFAULT '',
+  boosted_until BIGINT DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS stars_updates (
+  update_id BIGINT PRIMARY KEY,
+  ts BIGINT
 );
 CREATE TABLE IF NOT EXISTS responses (
   id TEXT PRIMARY KEY,
@@ -269,3 +279,7 @@ def init_db():
             execute('ALTER TABLE users ADD COLUMN ' + col)
         except Exception:
             pass
+    try:
+        execute('ALTER TABLE orders ADD COLUMN boosted_until INTEGER DEFAULT 0')
+    except Exception:
+        pass

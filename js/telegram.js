@@ -128,6 +128,12 @@
     global.open(url, '_blank');
   }
 
+  /* Открывает инвойс Telegram Stars; callback получает 'paid', 'cancelled' или 'failed'. */
+  function openInvoice(url, cb) {
+    if (!T.isTg || !T.tg || typeof T.tg.openInvoice !== 'function') return false;
+    try { T.tg.openInvoice(url, cb || function () {}); return true; } catch (e) { return false; }
+  }
+
   function openTelegramLink(url) {
     if (T.isTg) { try { T.tg.openTelegramLink(url); return; } catch (e) {} }
     global.open(url, '_blank');
@@ -149,6 +155,7 @@
   T.showBack = showBack;
   T.hideBack = hideBack;
   T.openLink = openLink;
+  T.openInvoice = openInvoice;
   T.openTelegramLink = openTelegramLink;
   T.verifyInitData = verifyInitData;
 

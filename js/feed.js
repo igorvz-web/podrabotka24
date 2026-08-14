@@ -25,6 +25,9 @@
         return true;
       });
       list.sort(function (a, b) {
+        var ba = (a.boostedUntil && a.boostedUntil > Date.now()) ? 1 : 0;
+        var bb = (b.boostedUntil && b.boostedUntil > Date.now()) ? 1 : 0;
+        if (ba !== bb) return bb - ba;
         if (state.sort === 'priceDesc') return (b.price || 0) - (a.price || 0);
         return (b.created_at || 0) - (a.created_at || 0);
       });
@@ -33,6 +36,7 @@
 
     function orderCard(o) {
       var badges = [U.el('span', { class: 'badge', text: o.type })];
+      if (o.boostedUntil && o.boostedUntil > Date.now()) badges.push(U.el('span', { class: 'badge ok', text: '🚀 Поднят' }));
       if (o.urgent) badges.push(U.el('span', { class: 'badge warn', text: 'Срочно' }));
       if (o.status !== 'open') {
         badges.push(U.el('span', { class: 'badge ' + (o.status === 'done' ? 'ok' : 'soft'), text: o.status === 'done' ? 'Завершён' : 'В работе' }));

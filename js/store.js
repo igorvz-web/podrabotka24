@@ -421,6 +421,10 @@
     return Promise.resolve(true);
   };
 
+  Store.boostOrder = function (orderId) {
+    return API.call('POST', '/api/orders/' + encodeURIComponent(orderId) + '/boost_invoice', {});
+  };
+
   Store.adminReports = function () {
     if (Store.online) {
       return API.call('GET', '/api/admin/reports').catch(function () { return []; });

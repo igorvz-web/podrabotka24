@@ -51,6 +51,7 @@
         contentEl.appendChild(reviewsSection('author'));
       }
       contentEl.appendChild(moderationSection());
+      contentEl.appendChild(promoSection());
       contentEl.appendChild(similarSection());
     }
 
@@ -428,6 +429,41 @@
         ]));
       }
       return wrap;
+    }
+
+    /* ---- Продвижение заказа (Telegram Stars) ---- */
+    function promoSection() {
+      var wrap = U.el('div', {});
+      var me = Store.me();
+      if (order.authorId !== me.id || order.status !== 'open') return wrap;
+      var boosted = order.boostedUntil && order.boostedUntil > Date.now();
+      wrap.appendChild(U.el('div', { class: 'card', style: { margin: '0 14px 10px' } }, [
+        U.el('div', { class: 'section-h', style: { margin: '0 0 8px' }, text: 'Продвижение' }),
+        boosted
+          ? U.el('div', { class: 'detail-desc', text: '🚀 Заказ поднят в ленте на 24 часа' })
+          : U.el('div', { class: 'action-bar' }, [
+            U.el('button', { class: 'btn primary', onclick: function () { boost(); } }, [U.iconEl('zap'), U.el('span', { text: 'Поднять заказ' })])
+          ])
+      ]));
+      return wrap;
+    }
+
+    function boost() {
+      Store.boostOrder(order.id).then(function (res) {
+        if (!T.openInvoice(res.url, function (status) {
+          if (status === 'paid') {
+            U.toast('Заказ поднят в ленте на 24 часа!');
+            T.notify('success');
+            Store.refreshOrder(order.id).then(function (fresh) {
+              if (fresh) { order = fresh; draw(); }
+            }).catch(function () {});
+          } else {
+            U.toast('Оплата не прошла');
+          }
+        })) {
+          U.toast('Продвижение доступно только в Telegram');
+        }
+      }).catch(function (err) { U.toast(err.message || 'Не удалось создать инвойс'); });
     }
 
     var REPORT_REASONS = ['Мошенничество', 'Спам', 'Оскорбления', 'Недостоверная информация', 'Другое'];
