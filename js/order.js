@@ -461,8 +461,14 @@
     function share() {
       var text = '💰 ' + order.price.toLocaleString('ru-RU') + ' ₽ — ' + order.title + '\n📍 ' + order.address + '\n🕐 ' + U.fmtDateTime(order.datetime) + '\n\n⚡ Подработка 24';
       var url = 'https://t.me/' + T.botName + '?startapp=o_' + order.id;
-      if (navigator.share) {
-        navigator.share({ title: order.title, text: text, url: url }).catch(function () {});
+      var shareUrl = 'https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(text);
+      if (T.isTg) {
+        /* В вебвью Telegram navigator.share ненадёжен — открываем нативный выбор чатов. */
+        T.openTelegramLink(shareUrl);
+      } else if (navigator.share) {
+        navigator.share({ title: order.title, text: text, url: url }).catch(function () {
+          T.openTelegramLink(shareUrl);
+        });
       } else {
         U.copyText(text + '\n' + url);
         U.toast('Текст и ссылка скопированы');
