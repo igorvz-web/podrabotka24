@@ -11,6 +11,14 @@
     var f = {};   // поля формы
     var people = 1;
 
+    var CITIES = ['Москва', 'Санкт-Петербург', 'Казань', 'Екатеринбург', 'Новосибирск', 'Нижний Новгород', 'Ростов-на-Дону', 'Самара', 'Уфа', 'Красноярск'];
+
+    function defaultCity() {
+      var c = null;
+      try { c = localStorage.getItem('p24_city'); } catch (e) {}
+      return (c && c !== 'Все города') ? c : 'Москва';
+    }
+
     function defaultDateTime() {
       var d = new Date(Date.now() + 3 * 3600000);
       var p = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -28,6 +36,7 @@
       view.appendChild(formEl);
 
       field('type', 'select', 'Тип работы *', ['Водитель', 'Грузчики', 'Разнорабочие', 'Переезды', 'Уборка', 'Другое']);
+      field('city', 'city', 'Город *');
       field('title', 'input', 'Заголовок *', null, 'Например: разгрузка фуры, переезд квартиры');
       field('desc', 'textarea', 'Описание', null, 'Подробности: объём работ, что нужно привезти, особенности…');
       field('address', 'address', 'Адрес *', null, 'Город, улица, дом');
@@ -59,6 +68,24 @@
         input = U.el('select', { class: 'control' });
         options.forEach(function (o) { input.appendChild(U.el('option', { value: o, text: o })); });
         input.addEventListener('change', onInput);
+      } else if (kind === 'city') {
+        var sel = U.el('select', { class: 'control' });
+        CITIES.forEach(function (c) { sel.appendChild(U.el('option', { value: c, text: c })); });
+        sel.appendChild(U.el('option', { value: '__custom', text: 'Свой город…' }));
+        var custom = U.el('input', { class: 'control', type: 'text', placeholder: 'Название города', autocomplete: 'off', style: { display: 'none', marginTop: '8px' } });
+        sel.value = defaultCity();
+        if (CITIES.indexOf(sel.value) === -1) sel.value = '__custom';
+        if (sel.value === '__custom') { custom.style.display = ''; custom.value = defaultCity(); }
+        sel.addEventListener('change', function () {
+          var customMode = sel.value === '__custom';
+          custom.style.display = customMode ? '' : 'none';
+          if (customMode) custom.focus();
+          onInput();
+        });
+        custom.addEventListener('input', onInput);
+        input = U.el('div', {}, [sel, custom]);
+        f.citySel = sel;
+        f.cityCustom = custom;
       } else if (kind === 'textarea') {
         input = U.el('textarea', { class: 'control', placeholder: ph || '', rows: 3 });
         input.addEventListener('input', onInput);
@@ -146,8 +173,12 @@
       var price = parseFloat(((f.price && f.price.value) || '').replace(',', '.'));
       var address = ((f.addressInput && f.addressInput.value) || '').trim();
       var dt = f.datetime && f.datetime.value;
+      var city = (f.citySel && f.citySel.value === '__custom')
+        ? ((f.cityCustom && f.cityCustom.value) || '').trim()
+        : ((f.citySel && f.citySel.value) || '').trim();
 
       if (title.length < 5) return { ok: false, msg: 'Заголовок должен быть не короче 5 символов' };
+      if (!city) return { ok: false, msg: 'Укажите город' };
       if (!(price > 0)) return { ok: false, msg: 'Укажите оплату больше 0 ₽' };
       if (!address) return { ok: false, msg: 'Укажите адрес' };
       if (!dt) return { ok: false, msg: 'Укажите дату и время' };
@@ -161,12 +192,16 @@
       if (!v.ok) { U.toast(v.msg); T.notify('error'); return; }
 
       var phone = (f.phone && f.phone.value || '').trim();
+      var city = f.citySel.value === '__custom'
+        ? f.cityCustom.value.trim()
+        : f.citySel.value;
       var order = {
         id: Store.uid(),
         type: f.type.value,
         title: f.title.value.trim(),
         description: (f.desc.value || '').trim(),
         address: f.addressInput.value.trim(),
+        city: city,
         price: Math.round(parseFloat(f.price.value.replace(',', '.'))),
         peopleCount: people,
         urgent: f.urgentCb.checked,

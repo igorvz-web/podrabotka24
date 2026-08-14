@@ -198,6 +198,7 @@ def order_payload(o):
         'created_at': o['created_at'],
         'status': o['status'],
         'boostedUntil': o.get('boosted_until') or 0,
+        'city': o.get('city') or '',
         'responses': responses,
         'reviews': reviews,
     }
@@ -355,12 +356,13 @@ def create_order(body: dict = None, uid: int = Depends(get_current_user)):
 
     order_id = 'o_' + uuid.uuid4().hex[:8]
     db.execute(
-        'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status) '
-        'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status, city) '
+        'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         (order_id, str(body['type']), str(body['title']).strip(), str(body.get('description', '') or '').strip(),
          str(body['address']).strip(), int(body['price']), int(body.get('peopleCount', 1)),
          1 if body.get('urgent') else 0, 1 if body.get('showPhone') else 0,
-         str(body.get('phone', '') or ''), str(body['datetime']), uid, now_ms(), 'open'))
+         str(body.get('phone', '') or ''), str(body['datetime']), uid, now_ms(), 'open',
+         str(body.get('city', '') or '').strip()))
     notify(uid, 'Заказ опубликован: «' + str(body['title']).strip() + '»')
     return mutation_result(order_id, uid)
 

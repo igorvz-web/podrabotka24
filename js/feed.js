@@ -8,18 +8,30 @@
 
   var TYPES = ['Все', 'Водитель', 'Грузчики', 'Разнорабочие', 'Переезды', 'Уборка', 'Другое'];
 
+  var CITIES = ['Москва', 'Санкт-Петербург', 'Казань', 'Екатеринбург', 'Новосибирск', 'Нижний Новгород', 'Ростов-на-Дону', 'Самара', 'Уфа', 'Красноярск'];
+  var CITY_SHORT = { 'Санкт-Петербург': 'СПб', 'Нижний Новгород': 'Н. Новгород', 'Ростов-на-Дону': 'Ростов-на-Дону' };
+  function cityLabel(c) { return CITY_SHORT[c] || c; }
+
+  function savedCity() {
+    var c = null;
+    try { c = localStorage.getItem('p24_city'); } catch (e) {}
+    return c || 'Все города';
+  }
+  function saveCity(c) { try { localStorage.setItem('p24_city', c); } catch (e) {} }
+
   P24.feed = (function () {
     var view = null, listEl = null, ptrEl = null, sentinelEl = null, endEl = null;
     var obs = null;
     var searchInput = null;
     var pull = { startY: 0, active: false, dist: 0, refreshing: false, attached: false };
 
-    var state = { query: '', type: 'Все', sort: 'new', page: 0, pageSize: 8 };
+    var state = { query: '', type: 'Все', sort: 'new', page: 0, pageSize: 8, city: savedCity() };
 
     function getVisible() {
       var q = state.query.trim().toLowerCase();
       var list = Store.getOrders().filter(function (o) {
         if (state.type !== 'Все' && o.type !== state.type) return false;
+        if (state.city !== 'Все города' && o.city !== state.city) return false;
         if (state.sort === 'urgent' && !o.urgent) return false;
         if (q && (o.title + ' ' + (o.description || '')).toLowerCase().indexOf(q) === -1) return false;
         return true;
@@ -36,6 +48,7 @@
 
     function orderCard(o) {
       var badges = [U.el('span', { class: 'badge', text: o.type })];
+      if (o.city) badges.push(U.el('span', { class: 'badge soft', text: '📍 ' + o.city }));
       if (o.boostedUntil && o.boostedUntil > Date.now()) badges.push(U.el('span', { class: 'badge ok', text: '🚀 Поднят' }));
       if (o.urgent) badges.push(U.el('span', { class: 'badge warn', text: 'Срочно' }));
       if (o.status !== 'open') {
@@ -96,6 +109,9 @@
     function emptySearchState() {
       if (state.query) {
         return U.emptyState('search', 'Ничего не найдено', 'Попробуйте изменить запрос или фильтр');
+      }
+      if (state.city !== 'Все города') {
+        return U.emptyState('feed', 'Заказов в городе нет', 'В городе ' + state.city + ' пока нет заказов. Создайте первый — кнопка «+» внизу');
       }
       return U.emptyState('feed', 'Заказов пока нет', 'Создайте первый заказ — кнопка «+» внизу');
     }
@@ -265,6 +281,27 @@
         }));
       });
       view.appendChild(chips);
+
+      var cityRow = U.el('div', { class: 'chips-row city-row' });
+      var cityChips = [];
+      var cityOptions = ['Все города'].concat(CITIES);
+      if (cityOptions.indexOf(state.city) === -1) cityOptions.push(state.city);
+      cityOptions.forEach(function (c) {
+        cityChips.push(U.el('button', {
+          class: 'chip' + (state.city === c ? ' active' : ''),
+          text: cityLabel(c),
+          onclick: function () {
+            T.impact('light');
+            state.city = c;
+            saveCity(c);
+            cityChips.forEach(function (b) { b.classList.toggle('active', b.textContent === cityLabel(c)); });
+            reset();
+          }
+        }));
+      });
+      view.appendChild(cityRow);
+      cityRow.appendChild(U.el('span', { class: 'city-row-lbl', text: '📍' }));
+      cityChips.forEach(function (b) { cityRow.appendChild(b); });
 
       var sortRow = U.el('div', { class: 'sort-row' }, [
         U.el('span', { class: 'lbl', text: 'Показ:' }),

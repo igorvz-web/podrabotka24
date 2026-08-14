@@ -84,13 +84,13 @@ def seed():
          'Москва, ул. Космонавтов, 15, кв. 88', 3000, 1, 0, 640, d(0, 13, 0), '108', 0, '', 'open'),
         ('o_9', 'Грузчики', 'Такелаж холодильника и стиральной машины',
          'Нужно поднять холодильник и стиральную машину на 4 этаж без лифта и поставить на место.',
-         'Москва, ул. Чехова, 5, кв. 12', 1500, 1, 1, 800, d(0, 15, 0), '109', 1, '+7 934 567-89-01', 'open'),
+         'Санкт-Петербург, ул. Чехова, 5, кв. 12', 1500, 1, 1, 800, d(0, 15, 0), '109', 1, '+7 934 567-89-01', 'open'),
         ('o_10', 'Другое', 'Помощь в выносе хлама с дачи',
          'Помочь вынести старую мебель и хлам из дома на участок, погрузить в прицеп.',
-         'Москва, СНТ «Берёзка», уч. 32', 2000, 2, 0, 1500, d(1, 12, 0), '110', 0, '', 'open'),
+         'Казань, СНТ «Берёзка», уч. 32', 2000, 2, 0, 1500, d(1, 12, 0), '110', 0, '', 'open'),
         ('o_11', 'Уборка', 'Мойка окон в квартире',
          'Помыть окна в 3-комнатной квартире, 8 окон + балкон.',
-         'Москва, ул. Пушкина, 8, кв. 3', 2500, 1, 0, 2100, d(0, 17, 0), '111', 0, '', 'open'),
+         'Санкт-Петербург, ул. Пушкина, 8, кв. 3', 2500, 1, 0, 2100, d(0, 17, 0), '111', 0, '', 'open'),
         ('o_12', 'Переезды', 'Перевозка + грузчики, 1 грузовик',
          'Переезд из хрущёвки в новостройку. Грузчик нужен на погрузку и выгрузку.',
          'Москва, от ул. Первомайская, 14 до ул. Новая, 1', 8000, 3, 0, 3000, d(2, 8, 0), '112', 1, '+7 945 678-90-12', 'open'),
@@ -103,9 +103,10 @@ def seed():
     ]
 
     for (oid, otype, title, desc, address, price, people, urgent, minago, iso, author, show_phone, phone, status) in orders:
+        city = address.split(',', 1)[0].strip()
         db.execute(
-            'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-            (oid, otype, title, desc, address, price, people, urgent, show_phone, phone, iso, author_ids[author], now - minago * MIN, status))
+            'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status, city) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            (oid, otype, title, desc, address, price, people, urgent, show_phone, phone, iso, author_ids[author], now - minago * MIN, status, city))
 
     # отклики на o_1 и o_2
     db.execute(
@@ -144,8 +145,8 @@ def ensure_demo_driver_order():
     import datetime
     x = (datetime.datetime.now() + datetime.timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
     db.execute(
-        'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status, city) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         ('o_14', 'Водитель', 'Водитель с машиной на день (грузоперевозки)',
          'Нужен водитель со своим авто (универсал или грузовой) на 8 часов: доставка мебели и развоз по 3 адресам. Оплата по часам.',
          'Москва, склад «Депо», ул. Электролитный пр-д, 3', 9000, 1, 1, 1, '+7 945 678-90-12',
-         x.strftime('%Y-%m-%dT%H:%M'), a['id'], int(time.time() * 1000) - 900 * MIN, 'open'))
+         x.strftime('%Y-%m-%dT%H:%M'), a['id'], int(time.time() * 1000) - 900 * MIN, 'open', 'Москва'))

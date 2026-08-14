@@ -251,8 +251,10 @@ input, textarea, select { font-family: inherit; font-size: 15px; color: var(--te
   border-color: transparent; color: var(--accent-text);
   box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 60%, transparent);
 }
-.sort-row { display: flex; gap: 8px; align-items: center; padding: 10px 16px 6px; }
-.sort-row .lbl { font-size: 12px; color: var(--hint); font-weight: 700; letter-spacing: .3px; }
+.city-row { padding: 2px 16px 4px; }
+.city-row-lbl { flex: none; font-size: 13px; padding-top: 2px; }
+.city-row .chip { padding: 6px 14px; font-size: 12px; font-weight: 600; }
+.sort-row { display: flex; gap: 8px; align-items: center; padding: 10px 16px 6px; }.sort-row .lbl { font-size: 12px; color: var(--hint); font-weight: 700; letter-spacing: .3px; }
 .seg {
   display: flex; flex: 1; background: var(--card); border: 1px solid var(--border);
   border-radius: 12px; padding: 4px; box-shadow: var(--shadow-sm);

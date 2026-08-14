@@ -73,6 +73,7 @@
       var meta = [
         cell('Оплата', order.price.toLocaleString('ru-RU') + ' ₽', 'ruble'),
         cell('Человек', order.peopleCount + ' ' + U.plural(order.peopleCount, ['человек', 'человека', 'человек']), 'users'),
+        cell('Город', order.city || '—', 'geo'),
         U.el('div', { class: 'meta-cell full' }, [
           U.el('div', { class: 'k', text: 'Адрес' }),
           U.el('div', { class: 'v' }, [U.iconEl('pin'), U.el('span', { text: order.address })])

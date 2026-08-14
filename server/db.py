@@ -54,7 +54,8 @@ CREATE TABLE IF NOT EXISTS orders (
   author_id INTEGER NOT NULL, created_at INTEGER,
   status TEXT DEFAULT 'open',
   accepted_response_id TEXT DEFAULT '',
-  boosted_until INTEGER DEFAULT 0
+  boosted_until INTEGER DEFAULT 0,
+  city TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS stars_updates (
   update_id INTEGER PRIMARY KEY,
@@ -126,7 +127,8 @@ CREATE TABLE IF NOT EXISTS orders (
   author_id INTEGER NOT NULL, created_at BIGINT,
   status TEXT DEFAULT 'open',
   accepted_response_id TEXT DEFAULT '',
-  boosted_until BIGINT DEFAULT 0
+  boosted_until BIGINT DEFAULT 0,
+  city TEXT DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS stars_updates (
   update_id BIGINT PRIMARY KEY,
@@ -281,5 +283,9 @@ def init_db():
             pass
     try:
         execute('ALTER TABLE orders ADD COLUMN boosted_until INTEGER DEFAULT 0')
+    except Exception:
+        pass
+    try:
+        execute("ALTER TABLE orders ADD COLUMN city TEXT DEFAULT ''")
     except Exception:
         pass
