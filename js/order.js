@@ -20,7 +20,7 @@
       var topbar = U.el('header', { class: 'topbar' }, [
         U.el('button', { class: 'icon-btn', onclick: function () { T.impact('light'); back(); } }, [U.iconEl('back')]),
         U.el('h1', { text: 'Заказ' }),
-        U.el('button', { class: 'icon-btn', onclick: function () { share(); } }, [U.iconEl('share')])
+        U.el('button', { class: 'icon-btn', onclick: function () { T.impact('light'); share(); } }, [U.iconEl('share')])
       ]);
       view.appendChild(topbar);
 
@@ -461,16 +461,23 @@
     function share() {
       var text = '💰 ' + order.price.toLocaleString('ru-RU') + ' ₽ — ' + order.title + '\n📍 ' + order.address + '\n🕐 ' + U.fmtDateTime(order.datetime) + '\n\n⚡ Подработка 24';
       var url = 'https://t.me/' + T.botName + '?startapp=o_' + order.id;
-      var shareUrl = 'https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(text);
-      if (T.isTg) {
-        /* В вебвью Telegram navigator.share ненадёжен — открываем нативный выбор чатов. */
-        T.openTelegramLink(shareUrl);
-      } else if (navigator.share) {
+      var full = text + '\n' + url;
+
+      /* В вебвью Telegram openTelegramLink закрывает приложение, а navigator.share
+         молча не срабатывает. Надёжный путь для Mini Apps — буфер обмена. */
+      if (T.tg && T.tg.setClipboardText) {
+        try { T.tg.setClipboardText(full); } catch (e) {}
+        U.toast('Ссылка скопирована — вставьте в чат');
+        T.impact('medium');
+        return;
+      }
+      if (navigator.share) {
         navigator.share({ title: order.title, text: text, url: url }).catch(function () {
-          T.openTelegramLink(shareUrl);
+          U.copyText(full);
+          U.toast('Текст и ссылка скопированы');
         });
       } else {
-        U.copyText(text + '\n' + url);
+        U.copyText(full);
         U.toast('Текст и ссылка скопированы');
       }
     }
