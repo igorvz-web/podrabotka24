@@ -1,0 +1,6 @@
+server/p24.db
+server/.env
+node_modules/
+__pycache__/
+*.pyc
+.venv/
