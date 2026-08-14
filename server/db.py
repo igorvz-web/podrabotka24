@@ -19,7 +19,7 @@ if USE_PG:
     # Пул: подключение к Neon дорогое (~0.6–1с за коннект) — держим тёплые соединения.
     # min_size=1 ещё и не даёт базе засыпать (постоянное активное соединение).
     _pool = ConnectionPool(DB_DSN, min_size=1, max_size=4, open=False,
-                           kwargs={'row_factory': dict_row, 'connect_timeout': 15})
+                           kwargs={'row_factory': dict_row, 'connect_timeout': 15, 'autocommit': True})
 
     def _ensure_pool():
         if _pool.closed:
