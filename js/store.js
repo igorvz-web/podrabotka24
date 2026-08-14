@@ -72,6 +72,7 @@
       Store.user = r[0].user;
       Store.myResponses = r[0].myResponses || [];
       Store.notifs = r[0].notifications || [];
+      _noteNotifs(Store.notifs);
       Store.orders = (r[1] || []).slice().sort(byTime);
       return Store;
     });
@@ -108,7 +109,40 @@
   Store.applyUpdate = function (res) {
     if (res.order) Store.upsertOrder(res.order);
     if (res.myResponses) Store.myResponses = res.myResponses;
-    if (res.notifications) Store.notifs = res.notifications;
+    if (res.notifications) {
+      Store.notifs = res.notifications;
+      _noteNotifs(res.notifications);
+      emitNotifs();
+    }
+  };
+
+  /* ---- Живые обновления (поллинг) ---- */
+  var _lastNotifTime = 0;
+  function _noteNotifs(arr) {
+    if (!arr || !arr.length) return;
+    var m = 0;
+    arr.forEach(function (n) { if (n.time && n.time > m) m = n.time; });
+    if (m > _lastNotifTime) _lastNotifTime = m;
+  }
+  function emitNotifs() {
+    try { document.dispatchEvent(new Event('p24:notifs')); } catch (e) {}
+  }
+
+  /* Проверяет новые события на сервере; возвращает свежие непрочитанные уведомления. */
+  Store.checkUpdates = function () {
+    if (!Store.online) return Promise.resolve([]);
+    return API.call('GET', '/api/me').then(function (r) {
+      var prev = Store.notifs || [];
+      var prevTimes = {};
+      prev.forEach(function (n) { prevTimes[n.time] = true; });
+      Store.user = r.user;
+      Store.myResponses = r.myResponses || [];
+      Store.notifs = r.notifications || [];
+      _noteNotifs(Store.notifs);
+      var fresh = Store.notifs.filter(function (n) { return !n.read && !prevTimes[n.time]; });
+      if (fresh.length || prev.length !== Store.notifs.length) emitNotifs();
+      return Store.refreshOrders().then(function () { return fresh; });
+    }).catch(function () { return []; });
   };
 
   /* ---- Мой профиль ---- */
@@ -216,10 +250,14 @@
     arr.forEach(function (n) { n.read = true; });
     if (Store.online) {
       API.call('POST', '/api/notifications/read', {})
-        .then(function (res) { if (res && res.notifications) Store.notifs = res.notifications; })
+        .then(function (res) {
+          if (res && res.notifications) { Store.notifs = res.notifications; _noteNotifs(res.notifications); }
+          emitNotifs();
+        })
         .catch(function () {});
     } else {
       Store.save(KEYS.notifs, arr);
+      emitNotifs();
     }
   };
   Store.unreadCount = function () {

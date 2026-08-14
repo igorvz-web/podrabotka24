@@ -189,6 +189,7 @@
       bellEl.appendChild(U.iconEl('bell'));
       if (n) bellEl.appendChild(U.el('span', { class: 'badge-dot', text: n > 9 ? '9+' : n }));
     }
+    document.addEventListener('p24:notifs', function () { renderTopbarBell(); });
 
     /* ---- Hero banner ---- */
     function buildHero() {

@@ -133,6 +133,21 @@
           var m = /^o_(\d+)$/.exec(T.startParam || '');
           if (m) go('order', Number(m[1]));
           else go('feed');
+
+          /* Поллинг новых событий: тост + бейдж на колокольчике. */
+          function pollNow() {
+            if (document.hidden) return;
+            Store.checkUpdates().then(function (fresh) {
+              if (fresh && fresh.length) {
+                U.toast('🔔 ' + fresh[0].text);
+                T.notify('success');
+              }
+            });
+          }
+          setInterval(pollNow, 15000);
+          document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) pollNow();
+          });
         }, wait);
       });
   }
