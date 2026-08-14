@@ -6,8 +6,18 @@ from . import db
 MIN = 60000
 
 
+def backfill_cities():
+    """Дозаполняет город у старых заказов (город берётся из начала адреса)."""
+    rows = db.query("SELECT id, address FROM orders WHERE city IS NULL OR city = ''")
+    for r in rows:
+        city = (r['address'] or '').split(',', 1)[0].strip()
+        if city:
+            db.execute('UPDATE orders SET city=? WHERE id=?', (city, r['id']))
+
+
 def seed():
     """Заполняет БД демо-данными, если она пуста."""
+    backfill_cities()
     existing = db.query('SELECT COUNT(*) AS c FROM users')
     if existing and existing[0]['c']:
         ensure_demo_driver_order()
