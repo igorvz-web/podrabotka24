@@ -3,6 +3,8 @@ import time
 
 from . import db
 
+MIN = 60000
+
 
 def seed():
     """Заполняет БД демо-данными, если она пуста."""
@@ -12,7 +14,6 @@ def seed():
         return
 
     now = int(time.time() * 1000)
-    MIN = 60000
 
     auth = [
         ('101', 'СтройЛогистика', 'stroy_log'),
