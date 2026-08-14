@@ -7,6 +7,7 @@
     tg: null,
     user: null,
     initData: '',
+    startParam: '',
     theme: {},
     dark: false,
     mainButton: null,
@@ -61,6 +62,7 @@
       T.initData = tg.initData || '';
       var u = tg.initDataUnsafe && tg.initDataUnsafe.user;
       T.user = u ? u : null;
+      T.startParam = (tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
       T.theme = tg.themeParams || {};
       T.dark = tg.colorScheme === 'dark' || isDarkHex(T.theme.bg_color);
       T.mainButton = tg.MainButton;

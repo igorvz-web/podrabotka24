@@ -5,6 +5,7 @@
   var U = global.U;
   var Store = global.Store;
   var T = global.T;
+  var API = global.API;
 
   var appEl = null, hostEl = null, navEl = null;
   var currentView = null, currentKey = null, backTo = 'feed';
@@ -120,7 +121,18 @@
         setTimeout(function () {
           if (splash) splash.remove();
           appEl.hidden = false;
-          go('feed');
+
+          /* Имя бота для ссылок «Поделиться» — с сервера (getMe). */
+          if (T.isTg) {
+            API.call('GET', '/api/bot/info').then(function (d) {
+              if (d && d.username) T.botName = d.username;
+            }).catch(function () {});
+          }
+
+          /* Редиплинк: t.me/бот?startapp=o_<id> → открываем именно тот заказ. */
+          var m = /^o_(\d+)$/.exec(T.startParam || '');
+          if (m) go('order', Number(m[1]));
+          else go('feed');
         }, wait);
       });
   }

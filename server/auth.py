@@ -5,6 +5,7 @@ import os
 import secrets
 import time
 import urllib.parse
+import urllib.request
 
 from . import db
 
@@ -25,6 +26,26 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN', '')
 
 # Публичный адрес приложения (для ссылок в уведомлениях админу), напр. https://myservice.onrender.com
 BASE_URL = os.environ.get('BASE_URL', '')
+
+_BOT_INFO = {'username': '', 'ts': 0}
+
+
+def get_bot_username():
+    """Имя пользователя бота для ссылок «Поделиться» (getMe, кэш на час)."""
+    now = time.time()
+    if not _BOT_INFO['username'] or now - _BOT_INFO['ts'] > 3600:
+        info = ''
+        if BOT_TOKEN:
+            try:
+                url = 'https://api.telegram.org/bot{}/getMe'.format(BOT_TOKEN)
+                with urllib.request.urlopen(url, timeout=10) as r:
+                    data = json.loads(r.read().decode('utf-8'))
+                info = (data.get('result') or {}).get('username') or ''
+            except Exception:
+                info = _BOT_INFO['username'] or ''
+        _BOT_INFO['username'] = info
+        _BOT_INFO['ts'] = now
+    return _BOT_INFO['username']
 
 
 def _parse_user(init_data):

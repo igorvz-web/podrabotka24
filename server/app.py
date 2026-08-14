@@ -52,6 +52,12 @@ def _ensure_admin(uid):
         raise HTTPException(403, 'Требуются права администратора')
 
 
+@app.get('/api/bot/info')
+def bot_info():
+    """Имя пользователя бота — для корректных ссылок «Поделиться». Без авторизации."""
+    return {'username': auth.get_bot_username() or None}
+
+
 def _compute_admin(tg_id):
     admins = {x.strip() for x in os.environ.get('ADMIN_TG_IDS', '').split(',') if x.strip()}
     if not auth.BOT_TOKEN and tg_id == '999001':
