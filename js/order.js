@@ -419,7 +419,7 @@
         ]));
       }
 
-      var canDelete = (isAuthor && order.status === 'open') || (isAdmin && !isAuthor);
+      var canDelete = (isAuthor && order.status === 'open') || isAdmin;
       if (canDelete) {
         wrap.appendChild(U.el('div', { class: 'action-bar', style: { marginTop: '10px' } }, [
           U.el('button', { class: 'btn danger', onclick: function () { confirmDelete(); } }, [
