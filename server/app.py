@@ -32,9 +32,34 @@ def now_ms():
     return int(time.time() * 1000)
 
 
-def notify(user_id, text):
+def notify(user_id, text, push=False, order_id=None):
     db.execute('INSERT INTO notifications (user_id, text, time, read) VALUES (?,?,?,0)',
                (user_id, text, now_ms()))
+    if push:
+        tg_push(user_id, text, order_id)
+
+
+def tg_push(user_id, text, order_id=None):
+    """Личное сообщение пользователю через Bot API (если задан BOT_TOKEN и включены push)."""
+    if not auth.BOT_TOKEN:
+        return
+    u = db.query('SELECT tg_id, tg_notify FROM users WHERE id=?', (user_id,), one=True)
+    if not u or not u.get('tg_id') or not u.get('tg_notify', 1):
+        return
+    payload = {'chat_id': u['tg_id'], 'text': text}
+    if order_id and auth.BASE_URL:
+        app_url = auth.BASE_URL.rstrip('/') + '/?startapp=o_' + order_id
+        payload['reply_markup'] = json.dumps({
+            'inline_keyboard': [[{'text': 'Открыть заказ', 'web_app': {'url': app_url}}]]
+        })
+    try:
+        req = urllib.request.Request(
+            'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
+            data=urllib.parse.urlencode(payload).encode(),
+            headers={'Content-Type': 'application/x-www-form-urlencoded'})
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass
 
 
 def get_current_user(authorization: str = Header(None)):
@@ -121,6 +146,7 @@ def user_payload(u):
         'completedCount': completed,
         'isAdmin': bool(u.get('is_admin')),
         'blocked': bool(u.get('blocked')),
+        'tgNotify': bool(u.get('tg_notify', 1)),
     }
 
 
@@ -285,11 +311,13 @@ def patch_me(body: dict = None, uid: int = Depends(get_current_user)):
     skills = body.get('skills')
     phone = body.get('phone')
     name = body.get('name')
+    tg_notify = body.get('tgNotify')
 
     new_skills = json.dumps(skills, ensure_ascii=False) if skills is not None else u['skills']
-    db.execute('UPDATE users SET role=?, skills=?, phone=?, name=? WHERE id=?',
+    db.execute('UPDATE users SET role=?, skills=?, phone=?, name=?, tg_notify=? WHERE id=?',
                (role, new_skills, phone if phone is not None else u['phone'],
-                name if name else u['name'], uid))
+                name if name else u['name'],
+                1 if tg_notify else 0 if tg_notify is not None else u['tg_notify'], uid))
     u = _me(uid)
     return {'user': user_payload(u)}
 
@@ -354,7 +382,8 @@ def respond(order_id: str, body: dict = None, uid: int = Depends(get_current_use
     db.execute('INSERT INTO responses (id, order_id, user_id, message, status, created_at) VALUES (?,?,?,?,?,?)',
                (r_id, order_id, uid, str(body.get('message', '') or ''), 'new', now_ms()))
     notify(uid, 'Ваш отклик отправлен на «' + o['title'] + '»')
-    notify(o['author_id'], 'Новый отклик от ' + u['name'] + ' на «' + o['title'] + '»')
+    notify(o['author_id'], 'Новый отклик от ' + u['name'] + ' на «' + o['title'] + '»',
+           push=True, order_id=order_id)
     return mutation_result(order_id, uid)
 
 
@@ -386,7 +415,8 @@ def assign(order_id: str, body: dict = None, uid: int = Depends(get_current_user
     db.execute("UPDATE orders SET status=?, accepted_response_id=? WHERE id=?",
                ('in_progress', r_id, order_id))
     ex = db.query('SELECT * FROM users WHERE id=?', (r['user_id'],), one=True) or {}
-    notify(r['user_id'], 'Вы назначены исполнителем на «' + o['title'] + '»')
+    notify(r['user_id'], 'Вы назначены исполнителем на «' + o['title'] + '»',
+           push=True, order_id=order_id)
     return mutation_result(order_id, uid)
 
 
@@ -402,7 +432,8 @@ def reject(order_id: str, body: dict = None, uid: int = Depends(get_current_user
     if not r:
         raise HTTPException(404, 'Отклик не найден')
     db.execute('UPDATE responses SET status=? WHERE id=?', ('rejected', r_id))
-    notify(r['user_id'], 'Ваш отклик на «' + o['title'] + '» отклонён')
+    notify(r['user_id'], 'Ваш отклик на «' + o['title'] + '» отклонён',
+           push=True, order_id=order_id)
     return mutation_result(order_id, uid)
 
 
@@ -423,7 +454,7 @@ def complete(order_id: str, uid: int = Depends(get_current_user)):
     if accepted:
         db.execute('UPDATE responses SET status=? WHERE id=?', ('done', accepted['id']))
         other = o['author_id'] if accepted['user_id'] == uid else accepted['user_id']
-        notify(other, 'Заказ «' + o['title'] + '» завершён')
+        notify(other, 'Заказ «' + o['title'] + '» завершён', push=True, order_id=order_id)
     return mutation_result(order_id, uid)
 
 
@@ -459,7 +490,8 @@ def review(order_id: str, body: dict = None, uid: int = Depends(get_current_user
     db.execute('INSERT INTO reviews (order_id, user_id, target_id, name, rating, text, time) VALUES (?,?,?,?,?,?,?)',
                (order_id, uid, target, u['name'], rating, text, now_ms()))
     if target:
-        notify(target, 'Вас оценили на «' + o['title'] + '»: ' + str(rating) + '★')
+        notify(target, 'Вас оценили на «' + o['title'] + '»: ' + str(rating) + '★',
+               push=True, order_id=order_id)
     return mutation_result(order_id, uid)
 
 

@@ -176,7 +176,13 @@
   Store.saveMe = function (u) {
     if (Store.online) {
       Store.user = u;
-      API.call('PATCH', '/api/me', { role: u.role, skills: u.skills || [], phone: u.phone || '', name: u.name })
+      API.call('PATCH', '/api/me', {
+        role: u.role,
+        skills: u.skills || [],
+        phone: u.phone || '',
+        name: u.name,
+        tgNotify: u.tgNotify === undefined ? undefined : u.tgNotify
+      })
         .then(function (res) { if (res && res.user) Store.user = res.user; })
         .catch(function () {});
       return;

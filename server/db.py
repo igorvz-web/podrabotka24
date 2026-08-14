@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS users (
   skills TEXT DEFAULT '[]',
   is_admin INTEGER DEFAULT 0,
   blocked INTEGER DEFAULT 0,
+  tg_notify INTEGER DEFAULT 1,
   created_at INTEGER,
   last_login INTEGER
 );
@@ -103,6 +104,7 @@ CREATE TABLE IF NOT EXISTS users (
   skills TEXT DEFAULT '[]',
   is_admin INTEGER DEFAULT 0,
   blocked INTEGER DEFAULT 0,
+  tg_notify INTEGER DEFAULT 1,
   created_at BIGINT,
   last_login BIGINT
 );
@@ -262,7 +264,7 @@ def executescript(script):
 def init_db():
     executescript(SCHEMA)
     # безопасная миграция: колонки могут отсутствовать в старой БД
-    for col in ('is_admin INTEGER DEFAULT 0', 'blocked INTEGER DEFAULT 0'):
+    for col in ('is_admin INTEGER DEFAULT 0', 'blocked INTEGER DEFAULT 0', 'tg_notify INTEGER DEFAULT 1'):
         try:
             execute('ALTER TABLE users ADD COLUMN ' + col)
         except Exception:

@@ -93,6 +93,35 @@
       });
       contentEl.appendChild(skillsCard);
 
+      /* Уведомления в Telegram */
+      var pushCard = U.el('div', { class: 'card', style: { margin: '0 14px 10px' } }, [
+        U.el('div', { class: 'section-h', style: { margin: '0 0 10px' }, text: 'Уведомления в Telegram' }),
+        U.el('div', { class: 'role-grid' }, [
+          U.el('button', {
+            class: 'btn ' + (me.tgNotify ? 'primary' : 'ghost') + ' btn-sm',
+            text: 'Включены',
+            onclick: function () {
+              T.impact('light');
+              me.tgNotify = true;
+              Store.saveMe(me);
+              draw();
+            }
+          }),
+          U.el('button', {
+            class: 'btn ' + (me.tgNotify ? 'ghost' : 'primary') + ' btn-sm',
+            text: 'Выключены',
+            onclick: function () {
+              T.impact('light');
+              me.tgNotify = false;
+              Store.saveMe(me);
+              draw();
+            }
+          })
+        ]),
+        U.el('div', { class: 'report-meta', style: { marginTop: '8px' }, text: 'Отклики, назначение и завершение приходят в личку от бота, даже когда приложение закрыто' })
+      ]);
+      contentEl.appendChild(pushCard);
+
       /* Модерация (админ) */
       if (me.isAdmin) {
         var admCard = U.el('div', { class: 'card', style: { margin: '0 14px 10px' } }, [

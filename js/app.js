@@ -61,6 +61,11 @@
     currentView = null;
   }
 
+  function qs(name) {
+    var m = new RegExp('[?&]' + name + '=([^&]*)').exec(global.location.search);
+    return m ? decodeURIComponent(m[1] || '') : '';
+  }
+
   function go(key, param, opts) {
     opts = opts || {};
     cleanupCurrent();
@@ -129,8 +134,8 @@
             }).catch(function () {});
           }
 
-          /* Редиплинк: t.me/бот?startapp=o_<id> → открываем именно тот заказ. */
-          var m = /^o_(\d+)$/.exec(T.startParam || '');
+          /* Редиплинк: t.me/бот?startapp=o_<id> или кнопка в уведомлении → открываем заказ. */
+          var m = /^o_(\d+)$/.exec(T.startParam || qs('startapp') || '');
           if (m) go('order', Number(m[1]));
           else go('feed');
 
