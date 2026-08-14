@@ -8,6 +8,7 @@ def seed():
     """Заполняет БД демо-данными, если она пуста."""
     existing = db.query('SELECT COUNT(*) AS c FROM users')
     if existing and existing[0]['c']:
+        ensure_demo_driver_order()
         return
 
     now = int(time.time() * 1000)
@@ -95,6 +96,9 @@ def seed():
         ('o_13', 'Уборка', 'Мытьё витрин магазина',
          'Помыть витрины и стеклянные двери магазина, 30 м² стекла. Вода есть.',
          'Москва, ТЦ «Рио», 1 этаж', 3500, 1, 0, 5000, d(-1, 10, 0), '113', 0, '', 'done'),
+        ('o_14', 'Водитель', 'Водитель с машиной на день (грузоперевозки)',
+         'Нужен водитель со своим авто (универсал или грузовой) на 8 часов: доставка мебели и развоз по 3 адресам. Оплата по часам.',
+         'Москва, склад «Депо», ул. Электролитный пр-д, 3', 9000, 1, 1, 900, d(1, 9, 0), '112', 1, '+7 945 678-90-12', 'open'),
     ]
 
     for (oid, otype, title, desc, address, price, people, urgent, minago, iso, author, show_phone, phone, status) in orders:
@@ -127,3 +131,20 @@ def seed():
         db.execute(
             'INSERT INTO reviews (order_id, user_id, target_id, name, rating, text, time) VALUES (?,?,?,?,?,?,?)',
             ('o_1', author_ids['101'], worker_ids[uid], '', rating, '', now - 20000 * MIN))
+
+
+def ensure_demo_driver_order():
+    """Добавляет демо-заказ «Водитель» в уже существующую БД (идемпотентно)."""
+    if db.query('SELECT id FROM orders WHERE id=?', ('o_14',), one=True):
+        return
+    a = db.query('SELECT id FROM users WHERE tg_id=?', ('112',), one=True)
+    if not a:
+        return
+    import datetime
+    x = (datetime.datetime.now() + datetime.timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+    db.execute(
+        'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        ('o_14', 'Водитель', 'Водитель с машиной на день (грузоперевозки)',
+         'Нужен водитель со своим авто (универсал или грузовой) на 8 часов: доставка мебели и развоз по 3 адресам. Оплата по часам.',
+         'Москва, склад «Депо», ул. Электролитный пр-д, 3', 9000, 1, 1, 1, '+7 945 678-90-12',
+         x.strftime('%Y-%m-%dT%H:%M'), a['id'], int(time.time() * 1000) - 900 * MIN, 'open'))

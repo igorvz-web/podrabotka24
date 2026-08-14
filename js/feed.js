@@ -6,7 +6,7 @@
   var Store = global.Store;
   var T = global.T;
 
-  var TYPES = ['Все', 'Грузчики', 'Разнорабочие', 'Переезды', 'Уборка', 'Другое'];
+  var TYPES = ['Все', 'Грузчики', 'Разнорабочие', 'Переезды', 'Уборка', 'Водитель', 'Другое'];
 
   P24.feed = (function () {
     var view = null, listEl = null, ptrEl = null, sentinelEl = null, endEl = null;
@@ -215,7 +215,7 @@
         U.el('div', { class: 'logo', html: U.icon('zap') }),
         U.el('div', { class: 'title-wrap' }, [
           U.el('h1', { text: 'Подработка 24' }),
-          U.el('div', { class: 'topbar-sub', text: 'Грузчики · Разнорабочие · Переезды' })
+          U.el('div', { class: 'topbar-sub', text: 'Грузчики · Переезды · Уборка · Водитель' })
         ]),
         (bellEl = U.el('button', {
           class: 'icon-btn', onclick: function () { T.impact('light'); openNotifs(); }
