@@ -463,22 +463,23 @@
       var url = 'https://t.me/' + T.botName + '?startapp=o_' + order.id;
       var full = text + '\n' + url;
 
-      /* В вебвью Telegram openTelegramLink закрывает приложение, а navigator.share
-         молча не срабатывает. Надёжный путь для Mini Apps — буфер обмена. */
-      if (T.tg && T.tg.setClipboardText) {
-        try { T.tg.setClipboardText(full); } catch (e) {}
+      function copyIt() {
+        if (T.tg && T.tg.setClipboardText) {
+          try { T.tg.setClipboardText(full); } catch (e) {}
+        } else {
+          U.copyText(full);
+        }
         U.toast('Ссылка скопирована — вставьте в чат');
         T.impact('medium');
-        return;
       }
+
+      /* iOS в вебвью Telegram: системная шторка «кому отправить», приложение живо.
+         Android WebView: Web Share API недоступен — копируем в буфер (окно выбора
+         чата Telegram на Android закрывает вебвью, поэтому его не используем). */
       if (navigator.share) {
-        navigator.share({ title: order.title, text: text, url: url }).catch(function () {
-          U.copyText(full);
-          U.toast('Текст и ссылка скопированы');
-        });
+        navigator.share({ title: order.title, text: text, url: url }).catch(function () { copyIt(); });
       } else {
-        U.copyText(full);
-        U.toast('Текст и ссылка скопированы');
+        copyIt();
       }
     }
 
