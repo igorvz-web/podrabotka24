@@ -79,9 +79,21 @@ def post_to_channel(text, order_id=None):
             'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
             data=urllib.parse.urlencode(payload).encode(),
             headers={'Content-Type': 'application/x-www-form-urlencoded'})
-        urllib.request.urlopen(req, timeout=5)
+        with urllib.request.urlopen(req, timeout=5) as r:
+            resp = json.loads(r.read().decode('utf-8'))
+        if not resp.get('ok'):
+            _notify_admin_fail('Канал-витрина: ' + str(resp.get('description', 'ошибка')))
+    except Exception as e:
+        _notify_admin_fail('Канал-витрина: ' + str(e)[:200])
+
+
+def _notify_admin_fail(text):
+    try:
+        admins = auth.ADMIN_TG_IDS
     except Exception:
-        pass
+        admins = []
+    if admins:
+        tg_push(int(admins[0]), text)
 
 
 def get_current_user(authorization: str = Header(None)):
