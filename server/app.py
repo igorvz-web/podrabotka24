@@ -94,6 +94,13 @@ def _notify_admin_fail(text):
         admins = []
     if not admins or not auth.BOT_TOKEN:
         return
+    print('CHANNEL_ERR: ' + text, flush=True)
+    try:
+        u = db.query('SELECT id FROM users WHERE tg_id=?', (admins[0],), one=True)
+        if u:
+            notify(u['id'], '⚠️ ' + text)
+    except Exception:
+        pass
     try:
         payload = {'chat_id': admins[0], 'text': text}
         req = urllib.request.Request(
