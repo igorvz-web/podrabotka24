@@ -321,44 +321,6 @@ def api_auth(body: dict = None):
     return {'token': token, 'user': user_payload(row)}
 
 
-@app.get('/api/test_channel')
-def test_channel():
-    """Диагностика группы-витрины: какой чат видит бот и что отвечает Telegram на пост с кнопкой."""
-    result = {'base_url': auth.BASE_URL, 'bot_token_set': bool(auth.BOT_TOKEN), 'chat': None, 'send': None}
-    group = os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
-    if not auth.BOT_TOKEN:
-        return result
-    try:
-        req = urllib.request.Request(
-            'https://api.telegram.org/bot{}/getChat'.format(auth.BOT_TOKEN) + '?' + urllib.parse.urlencode({'chat_id': group}))
-        with urllib.request.urlopen(req, timeout=10) as r:
-            result['chat'] = json.loads(r.read().decode('utf-8'))
-    except Exception as e:
-        result['chat'] = {'ok': False, 'reason': str(e)[:300]}
-    if not auth.BASE_URL:
-        result['send'] = {'ok': False, 'reason': 'BASE_URL не задан — кнопка не добавляется'}
-        return result
-    app_url = auth.BASE_URL.rstrip('/') + '/?startapp=o_1'
-    try:
-        payload = {'chat_id': group, 'text': '🔘 Тест группы-витрины с кнопкой «Открыть заказ»',
-                   'reply_markup': json.dumps({
-                       'inline_keyboard': [[{'text': 'Открыть заказ', 'url': app_url}]]
-                   })}
-        req = urllib.request.Request(
-            'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
-            data=urllib.parse.urlencode(payload).encode(),
-            headers={'Content-Type': 'application/x-www-form-urlencoded'})
-        try:
-            with urllib.request.urlopen(req, timeout=10) as r:
-                result['send'] = json.loads(r.read().decode('utf-8'))
-        except urllib.error.HTTPError as e:
-            body = e.read().decode('utf-8', 'replace')[:500]
-            result['send'] = {'ok': False, 'http': e.code, 'body': body}
-    except Exception as e:
-        result['send'] = {'ok': False, 'reason': str(e)[:300]}
-    return result
-
-
 @app.get('/api/health')
 def health():
     # Лёгкий запрос к БД, чтобы внешний пингер держал активными и Render, и базу (Neon)
