@@ -71,8 +71,10 @@ def post_to_channel(text, order_id=None):
     payload = {'chat_id': group, 'text': text}
     if order_id and auth.BASE_URL:
         app_url = auth.BASE_URL.rstrip('/') + '/?startapp=' + order_id
+        # web_app-кнопки в группах и каналах Telegram запрещает (только личные чаты),
+        # поэтому обычная url-кнопка: открывает приложение во встроенном браузере с SDK
         payload['reply_markup'] = json.dumps({
-            'inline_keyboard': [[{'text': 'Открыть заказ', 'web_app': {'url': app_url}}]]
+            'inline_keyboard': [[{'text': 'Открыть заказ', 'url': app_url}]]
         })
     try:
         req = urllib.request.Request(
@@ -340,7 +342,7 @@ def test_channel():
     try:
         payload = {'chat_id': group, 'text': '🔘 Тест группы-витрины с кнопкой «Открыть заказ»',
                    'reply_markup': json.dumps({
-                       'inline_keyboard': [[{'text': 'Открыть заказ', 'web_app': {'url': app_url}}]]
+                       'inline_keyboard': [[{'text': 'Открыть заказ', 'url': app_url}]]
                    })}
         req = urllib.request.Request(
             'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
