@@ -63,19 +63,21 @@ def tg_push(user_id, text, order_id=None):
         pass
 
 
-def post_to_channel(text, order_id=None):
-    """Публикует заказ в группу-витрину (GROUP_ID), если бот — админ группы."""
+def post_to_channel(text, order_id=None, buttons=None):
+    """Публикует заказ в группу-витрину (GROUP_ID). Возвращает message_id или None."""
     if not auth.BOT_TOKEN:
-        return
+        return None
     group = os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
     payload = {'chat_id': group, 'text': text}
-    if order_id and auth.BASE_URL:
-        app_url = auth.BASE_URL.rstrip('/') + '/?startapp=' + order_id
-        # web_app-кнопки в группах и каналах Telegram запрещает (только личные чаты),
-        # поэтому обычная url-кнопка: открывает приложение во встроенном браузере с SDK
-        payload['reply_markup'] = json.dumps({
-            'inline_keyboard': [[{'text': 'Открыть заказ', 'url': app_url}]]
-        })
+    if buttons is None:
+        buttons = []
+        if order_id and auth.BASE_URL:
+            app_url = auth.BASE_URL.rstrip('/') + '/?startapp=' + order_id
+            # web_app-кнопки в группах и каналах Telegram запрещает (только личные чаты),
+            # поэтому обычная url-кнопка: открывает приложение во встроенном браузере с SDK
+            buttons = [[{'text': 'Открыть заказ', 'url': app_url}]]
+    if buttons:
+        payload['reply_markup'] = json.dumps({'inline_keyboard': buttons})
     try:
         req = urllib.request.Request(
             'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
@@ -85,8 +87,11 @@ def post_to_channel(text, order_id=None):
             resp = json.loads(r.read().decode('utf-8'))
         if not resp.get('ok'):
             _notify_admin_fail('Канал-витрина: ' + str(resp.get('description', 'ошибка')))
+            return None
+        return (resp.get('result') or {}).get('message_id')
     except Exception as e:
         _notify_admin_fail('Канал-витрина: ' + str(e)[:200])
+        return None
 
 
 def _notify_admin_fail(text):
@@ -438,12 +443,17 @@ def notify_subscribers(order):
     city = (order.get('city') or '') or ''
     otype = (order.get('type') or '') or ''
     rows = db.query("SELECT user_id FROM subscriptions WHERE (city='' OR city=?) AND (type='' OR type=?)", (city, otype))
+    where = ' в ' + city if city else ''
+    price = str(order.get('price') or 0)
+    if not price or price == '0':
+        price = 'договорная'
+    else:
+        price = price + ' ₽'
     for s in rows:
         suid = s['user_id']
         if suid == order['author_id']:
             continue
-        notify(suid, '🔔 Новый заказ в ' + (order.get('city') or '') + ': «' + order['title'] + '» · ' +
-               str(order['price']) + ' ₽', push=True, order_id=order['id'])
+        notify(suid, '🔔 Новый заказ' + where + ': «' + order['title'] + '» · ' + price, push=True, order_id=order['id'])
 
 
 # --------------------------------------------------------------------------
@@ -882,7 +892,7 @@ def _apply_star_payment(update_id, payment):
     notify(o['author_id'], 'Заказ «' + o['title'] + '» поднят в ленте на 24 часа')
 
 
-def _stars_poll_once():
+def _tg_poll_once():
     global _STARS_OFFSET
     if not auth.BOT_TOKEN:
         return
@@ -899,47 +909,275 @@ def _stars_poll_once():
             pq = upd.get('pre_checkout_query')
             if pq:
                 _tg_call('answerPreCheckoutQuery', {'pre_checkout_query_id': pq['id'], 'ok': 'true'})
+                continue
+            cb = upd.get('callback_query')
+            if cb:
+                _bot_handle_callback(cb)
+                continue
             msg = upd.get('message') or {}
             sp = msg.get('successful_payment')
             if sp:
                 _apply_star_payment(upd['update_id'], sp)
+            elif msg:
+                _bot_handle_message(msg)
         except Exception:
             pass
 
 
+# --------------------------------------------------------------------------
+# Бот-редактор: люди пишут в ЛС → заказ в приложении + карточка в группу
+# --------------------------------------------------------------------------
+
+BOT_TYPES = [
+    ('gruz', 'Грузчики'),
+    ('vod', 'Водитель'),
+    ('pereezd', 'Переезды'),
+    ('uborka', 'Уборка'),
+    ('raznorab', 'Разнорабочий'),
+    ('drug', 'Другое'),
+]
+BOT_TYPE_LABEL = {k: lbl for k, lbl in BOT_TYPES}
+
+
+def _kv_get(key):
+    try:
+        r = db.query('SELECT v FROM kv WHERE k=?', (key,), one=True)
+        return r['v'] if r else None
+    except Exception:
+        return None
+
+
+def _kv_set(key, val):
+    try:
+        if _kv_get(key) is None:
+            db.execute('INSERT INTO kv (k, v) VALUES (?,?)', (key, val))
+        else:
+            db.execute('UPDATE kv SET v=? WHERE k=?', (val, key))
+    except Exception:
+        pass
+
+
+def _bot_user_by_tg(tg_id, first_name, username):
+    uid = str(tg_id)
+    u = db.query('SELECT * FROM users WHERE tg_id=?', (uid,), one=True)
+    if u:
+        return u
+    try:
+        new_id = db.execute(
+            'INSERT INTO users (tg_id, name, username, role, skills, created_at, last_login) VALUES (?,?,?,?,?,?,?)',
+            (uid, (first_name or '').strip() or 'Пользователь', username or '', 'both', '[]', now_ms(), now_ms()))
+        return db.query('SELECT * FROM users WHERE id=?', (new_id,), one=True)
+    except Exception:
+        return db.query('SELECT * FROM users WHERE tg_id=?', (uid,), one=True)
+
+
+def _bot_welcome(chat_id):
+    try:
+        markup = {'inline_keyboard': [[{'text': 'Открыть приложение',
+                                        'url': (auth.BASE_URL or '').rstrip('/') + '/'}]]}
+        _tg_call('sendMessage', {
+            'chat_id': chat_id,
+            'text': 'Привет! Я бот «Подработка 24» 🤝\n\n'
+                    'Напишите сообщением вашу вакансию или подработку, например:\n\n'
+                    '«Нужен грузчик на 4 часа, 2500 ₽, Москва»\n\n'
+                    'Я опубликую её в группе и в приложении.',
+            'reply_markup': json.dumps(markup)})
+    except Exception:
+        pass
+
+
+def _bot_ask_type(chat_id):
+    kb = []
+    for i in range(0, len(BOT_TYPES), 2):
+        kb.append([{'text': lbl, 'callback_data': 'p24vt_' + k} for k, lbl in BOT_TYPES[i:i + 2]])
+    try:
+        _tg_call('sendMessage', {'chat_id': chat_id,
+                                 'text': '👌 Принято! Выберите тип работы:',
+                                 'reply_markup': json.dumps({'inline_keyboard': kb})})
+    except Exception:
+        pass
+
+
+def _bot_handle_message(msg):
+    if (msg.get('chat') or {}).get('type') != 'private':
+        return
+    frm = msg.get('from') or {}
+    tg_id = frm.get('id')
+    chat_id = (msg.get('chat') or {}).get('id')
+    text = (msg.get('text') or '').strip()
+    if not tg_id or not chat_id or not text:
+        return
+    if text.startswith('/start'):
+        _bot_welcome(chat_id)
+        return
+    if text.startswith('/'):
+        return
+    u = _bot_user_by_tg(tg_id, frm.get('first_name') or '', frm.get('username') or '')
+    if not u:
+        return
+    _kv_set('bot_pend_' + str(chat_id), json.dumps(
+        {'user_id': u['id'], 'title': text[:300]}, ensure_ascii=False))
+    _bot_ask_type(chat_id)
+
+
+def _bot_create_order(chat_id, cqid, msg_id, type_key):
+    label = BOT_TYPE_LABEL.get(type_key)
+    pend_s = _kv_get('bot_pend_' + str(chat_id))
+    if not label or not pend_s:
+        try:
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid,
+                                             'text': 'Срок действия истёк — напишите сообщение заново'})
+        except Exception:
+            pass
+        return
+    pend = json.loads(pend_s)
+    try:
+        db.execute('DELETE FROM kv WHERE k=?', ('bot_pend_' + str(chat_id),))
+    except Exception:
+        pass
+    order_id = 'o_' + uuid.uuid4().hex[:8]
+    title = (pend.get('title') or '').strip()[:300] or 'Без названия'
+    dt = time.strftime('%Y-%m-%dT%H:%M')
+    try:
+        db.execute(
+            'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status, city) '
+            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            (order_id, label, title, title, '', 0, 1, 0, 0, '', dt, pend['user_id'], now_ms(), 'open', ''))
+    except Exception:
+        return
+    try:
+        _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': '✅ Опубликовано'})
+        _tg_call('editMessageText', {'chat_id': chat_id, 'message_id': msg_id,
+                                     'text': '✅ Ваш заказ опубликован в группе и в приложении!\n\n«' + title + '»\n📦 ' + label + '\n💰 Договорная'})
+    except Exception:
+        pass
+    text = '🆕 Новый заказ\n\n«' + title + '»\n📦 ' + label + '\n💰 Договорная\n🕐 ' + dt.replace('T', ' ')
+    app_url = (auth.BASE_URL or '').rstrip('/') + '/?startapp=' + order_id
+    mid = post_to_channel(text, buttons=[
+        [{'text': 'Вакансия закрыта', 'callback_data': 'p24close_' + order_id}],
+        [{'text': 'Открыть в приложении', 'url': app_url}],
+    ])
+    if mid:
+        _kv_set('bot_msg_' + order_id, json.dumps({'msg_id': mid, 'text': text}))
+    try:
+        notify(pend['user_id'], 'Заказ опубликован: «' + title + '»')
+    except Exception:
+        pass
+    try:
+        notify_subscribers({'id': order_id, 'author_id': pend['user_id'], 'title': title,
+                            'city': '', 'type': label, 'price': 'договорная'})
+    except Exception:
+        pass
+
+
+def _bot_close_order(cqid, tg_id, order_id):
+    o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
+    if not o:
+        try:
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Заказ не найден'})
+        except Exception:
+            pass
+        return
+    if o.get('status') != 'open':
+        try:
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Вакансия уже закрыта'})
+        except Exception:
+            pass
+        return
+    author = db.query('SELECT tg_id FROM users WHERE id=?', (o['author_id'],), one=True)
+    if not author or str(author.get('tg_id') or '') != str(tg_id):
+        try:
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid,
+                                             'text': 'Закрыть может только автор заказа'})
+        except Exception:
+            pass
+        return
+    db.execute("UPDATE orders SET status='done' WHERE id=?", (order_id,))
+    try:
+        _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': '✅ Вакансия закрыта'})
+    except Exception:
+        pass
+    info_s = _kv_get('bot_msg_' + order_id)
+    if info_s:
+        try:
+            info = json.loads(info_s)
+            group = os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
+            _tg_call('editMessageText', {'chat_id': group, 'message_id': info['msg_id'],
+                                         'text': info['text'] + '\n\n✅ Вакансия закрыта',
+                                         'reply_markup': json.dumps({'inline_keyboard': []})})
+        except Exception:
+            pass
+    try:
+        notify(o['author_id'], 'Ваша вакансия «' + str(o.get('title') or '') + '» закрыта')
+    except Exception:
+        pass
+
+
+def _bot_handle_callback(cb):
+    frm = cb.get('from') or {}
+    tg_id = frm.get('id')
+    data = cb.get('data') or ''
+    cqid = cb.get('id')
+    if not tg_id or not cqid:
+        return
+    if data.startswith('p24vt_'):
+        m = cb.get('message') or {}
+        _bot_create_order((m.get('chat') or {}).get('id'), cqid, m.get('message_id'),
+                          data[len('p24vt_'):])
+    elif data.startswith('p24close_'):
+        _bot_close_order(cqid, tg_id, data[len('p24close_'):])
+
+
 def pin_group_welcome():
-    """Разово постит и закрепляет в группе-витрине сообщение с кнопкой приложения."""
+    """Разово постит в группу-витрину: приветствие (пин) + кнопку «Подать заявку»."""
     if not auth.BOT_TOKEN or not auth.BASE_URL:
         return
     group = os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
     try:
         done = db.query("SELECT v FROM kv WHERE k='group_welcome'", one=True)
-        if done:
-            return
-        try:
-            payload = {'chat_id': group,
-                       'text': '👋 Добро пожаловать в «Подработка 24»!\n\nЗдесь автоматически появляются свежие заказы. Открыть приложение:',
-                       'reply_markup': json.dumps({
-                           'inline_keyboard': [[{'text': 'Открыть приложение', 'url': auth.BASE_URL.rstrip('/') + '/'}]]
-                       })}
-            req = urllib.request.Request(
-                'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
-                data=urllib.parse.urlencode(payload).encode(),
-                headers={'Content-Type': 'application/x-www-form-urlencoded'})
-            with urllib.request.urlopen(req, timeout=8) as r:
-                resp = json.loads(r.read().decode('utf-8'))
-            msg_id = resp.get('result', {}).get('message_id')
-            if msg_id:
-                try:
-                    pin = urllib.request.Request(
-                        'https://api.telegram.org/bot{}/pinChatMessage'.format(auth.BOT_TOKEN) + '?' +
-                        urllib.parse.urlencode({'chat_id': group, 'message_id': msg_id, 'disable_notification': 'true'}))
-                    urllib.request.urlopen(pin, timeout=8)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        db.execute("INSERT INTO kv (k, v) VALUES ('group_welcome', '1')")
+        if not done:
+            try:
+                payload = {'chat_id': group,
+                           'text': '👋 Добро пожаловать в «Подработка 24»!\n\nЗдесь автоматически появляются свежие заказы. Открыть приложение:',
+                           'reply_markup': json.dumps({
+                               'inline_keyboard': [[{'text': 'Открыть приложение', 'url': auth.BASE_URL.rstrip('/') + '/'}]]
+                           })}
+                req = urllib.request.Request(
+                    'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
+                    data=urllib.parse.urlencode(payload).encode(),
+                    headers={'Content-Type': 'application/x-www-form-urlencoded'})
+                with urllib.request.urlopen(req, timeout=8) as r:
+                    resp = json.loads(r.read().decode('utf-8'))
+                msg_id = resp.get('result', {}).get('message_id')
+                if msg_id:
+                    try:
+                        pin = urllib.request.Request(
+                            'https://api.telegram.org/bot{}/pinChatMessage'.format(auth.BOT_TOKEN) + '?' +
+                            urllib.parse.urlencode({'chat_id': group, 'message_id': msg_id, 'disable_notification': 'true'}))
+                        urllib.request.urlopen(pin, timeout=8)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            db.execute("INSERT INTO kv (k, v) VALUES ('group_welcome', '1')")
+        bot_username = auth.get_bot_username() or None
+        inv = db.query("SELECT v FROM kv WHERE k='group_invite'", one=True)
+        if not inv and bot_username:
+            try:
+                payload = {'chat_id': group,
+                           'text': '💼 Хотите разместить вакансию или подработку?\n\nНапишите боту — мы опубликуем её в группе и в приложении:',
+                           'reply_markup': json.dumps({
+                               'inline_keyboard': [[{'text': '✍️ Подать заявку',
+                                                     'url': 'https://t.me/' + bot_username}]]
+                           })}
+                req = urllib.request.Request(
+                    'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
+                    data=urllib.parse.urlencode(payload).encode(),
+                    headers={'Content-Type': 'application/x-www-form-urlencoded'})
+                urllib.request.urlopen(req, timeout=8)
+            except Exception:
+                pass
+            db.execute("INSERT INTO kv (k, v) VALUES ('group_invite', '1')")
     except Exception:
         pass
 
@@ -947,7 +1185,7 @@ def pin_group_welcome():
 def _stars_loop():
     while True:
         try:
-            _stars_poll_once()
+            _tg_poll_once()
         except Exception:
             pass
         time.sleep(3)

@@ -66,7 +66,7 @@
           U.el('div', { class: 'row' }, [U.el('span', { text: 'Опубликовано ' + U.timeAgo(o.created_at), style: { fontSize: '11px', color: 'var(--hint)' } })])
         ]),
         U.el('div', { class: 'order-foot' }, [
-          U.el('div', { class: 'price', html: U.esc(o.price.toLocaleString('ru-RU')) + ' <span class="cur">₽</span>' }),
+          U.el('div', { class: 'price', html: o.price ? (U.esc(o.price.toLocaleString('ru-RU')) + ' <span class="cur">₽</span>') : 'договорная' }),
           U.el('span', { class: 'responses-count' }, [U.iconEl('users'), U.el('span', { text: o.responses.length })])
         ])
       ]);

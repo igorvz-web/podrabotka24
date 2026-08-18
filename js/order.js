@@ -71,7 +71,7 @@
       }
 
       var meta = [
-        cell('Оплата', order.price.toLocaleString('ru-RU') + ' ₽', 'ruble'),
+        cell('Оплата', U.fmtPrice(order.price), 'ruble'),
         cell('Человек', order.peopleCount + ' ' + U.plural(order.peopleCount, ['человек', 'человека', 'человек']), 'users'),
         cell('Город', order.city || '—', 'geo'),
         U.el('div', { class: 'meta-cell full' }, [
@@ -529,7 +529,7 @@
           U.el('div', { class: 'order-top' }, [U.el('span', { class: 'badge', text: o.type })]),
           U.el('div', { class: 'order-title', text: o.title }),
           U.el('div', { class: 'order-foot' }, [
-            U.el('div', { class: 'price', html: U.esc(o.price.toLocaleString('ru-RU')) + ' <span class="cur">₽</span>' }),
+            U.el('div', { class: 'price', html: o.price ? (U.esc(o.price.toLocaleString('ru-RU')) + ' <span class="cur">₽</span>') : 'договорная' }),
             U.el('span', { class: 'responses-count' }, [U.iconEl('users'), U.el('span', { text: o.responses.length })])
           ])
         ]));
@@ -539,7 +539,7 @@
 
     /* ---- Поделиться ---- */
     function share() {
-      var text = '💰 ' + order.price.toLocaleString('ru-RU') + ' ₽ — ' + order.title + '\n📍 ' + order.address + '\n🕐 ' + U.fmtDateTime(order.datetime) + '\n\n⚡ Подработка 24';
+      var text = '💰 ' + U.fmtPrice(order.price) + ' — ' + order.title + '\n📍 ' + order.address + '\n🕐 ' + U.fmtDateTime(order.datetime) + '\n\n⚡ Подработка 24';
       var url = 'https://t.me/' + T.botName + '?startapp=' + order.id;
       var full = text + '\n' + url;
 

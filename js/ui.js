@@ -65,6 +65,7 @@
 
   function fmtPrice(n) {
     n = Math.round(n || 0);
+    if (!n) return 'договорная';
     return n.toLocaleString('ru-RU') + ' ₽';
   }
 

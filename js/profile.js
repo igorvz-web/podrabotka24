@@ -349,7 +349,7 @@
           U.el('span', { class: 'badge ' + (o.status === 'done' ? 'ok' : o.status === 'in_progress' ? 'soft' : ''), text: o.status === 'done' ? '✓' : o.status === 'in_progress' ? 'Работа' : 'Открыт' }),
           U.el('div', { class: 't' }, [
             U.el('div', { class: 'ti', text: o.title }),
-            U.el('div', { class: 'su', text: o.price.toLocaleString('ru-RU') + ' ₽ · ' + o.responses.length + ' откл. · ' + U.timeAgo(o.created_at) })
+            U.el('div', { class: 'su', text: U.fmtPrice(o.price) + ' · ' + o.responses.length + ' откл. · ' + U.timeAgo(o.created_at) })
           ]),
           U.el('span', { class: 'icon-btn', style: { width: '30px', height: '30px' } }, [U.iconEl('back', 'back-chev')])
         ]));
