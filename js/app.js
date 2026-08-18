@@ -134,10 +134,21 @@
             }).catch(function () {});
           }
 
-          /* Редиплинк: t.me/бот?startapp=o_<id> или кнопка в уведомлении → открываем заказ. */
-          var m = /^o_[0-9a-f]+$/i.exec(T.startParam || qs('startapp') || '');
-          if (m) go('order', m[0]);
-          else go('feed');
+          /* Редиплинк: o_<id> → заказ, ref_<id> → реферальная ссылка, иначе лента. */
+          var rp = T.startParam || qs('startapp') || '';
+          var m = /^o_[0-9a-f]+$/i.exec(rp);
+          if (m) { go('order', m[0]); }
+          else {
+            var ref = /^ref_(\d+)$/.exec(rp);
+            if (ref) {
+              Store.sendReferral(parseInt(ref[1], 10)).then(function (ok) {
+                if (ok) { go('feed'); }
+                else go('feed');
+              });
+            } else {
+              go('feed');
+            }
+          }
 
           /* Поллинг новых событий: тост + бейдж на колокольчике. */
           function pollNow() {

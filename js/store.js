@@ -425,6 +425,31 @@
     return API.call('POST', '/api/orders/' + encodeURIComponent(orderId) + '/boost_invoice', {});
   };
 
+  Store.sendReferral = function (refId) {
+    if (!Store.online) return Promise.resolve(true);
+    return API.call('POST', '/api/referral', { ref: refId }).catch(function () { return null; });
+  };
+
+  Store.getSubs = function () {
+    if (!Store.online) return Promise.resolve([]);
+    return API.call('GET', '/api/subscriptions').catch(function () { return []; });
+  };
+
+  Store.addSub = function (city, type) {
+    if (!Store.online) return Promise.resolve([]);
+    return API.call('POST', '/api/subscriptions', { city: city, type: type }).catch(function () { return []; });
+  };
+
+  Store.delSub = function (subId) {
+    if (!Store.online) return Promise.resolve([]);
+    return API.call('DELETE', '/api/subscriptions/' + encodeURIComponent(subId)).catch(function () { return []; });
+  };
+
+  Store.adminStats = function () {
+    if (!Store.online || !Store.isAdmin()) return Promise.resolve(null);
+    return API.call('GET', '/api/admin/stats').catch(function () { return null; });
+  };
+
   Store.adminReports = function () {
     if (Store.online) {
       return API.call('GET', '/api/admin/reports').catch(function () { return []; });

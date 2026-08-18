@@ -185,6 +185,10 @@ def compute_stats(user_id):
 def user_payload(u):
     skills = json.loads(u.get('skills') or '[]')
     rating, rating_count, completed = compute_stats(u['id'])
+    try:
+        ref = db.query('SELECT COUNT(*) AS c FROM users WHERE referred_by=?', (u['id'],), one=True) or {}
+    except Exception:
+        ref = {}
     return {
         'id': u['id'],
         'name': u['name'],
@@ -199,6 +203,7 @@ def user_payload(u):
         'isAdmin': bool(u.get('is_admin')),
         'blocked': bool(u.get('blocked')),
         'tgNotify': bool(u.get('tg_notify', 1)),
+        'referrals': int(ref.get('c', 0) or 0),
     }
 
 
@@ -377,6 +382,71 @@ def patch_me(body: dict = None, uid: int = Depends(get_current_user)):
 
 
 # --------------------------------------------------------------------------
+# Реферальная программа
+# --------------------------------------------------------------------------
+
+@app.post('/api/referral')
+def post_referral(body: dict = None, uid: int = Depends(get_current_user)):
+    body = body or {}
+    try:
+        ref = int(body.get('ref', 0) or 0)
+    except Exception:
+        ref = 0
+    if ref <= 0 or ref == uid:
+        return {'ok': True}
+    u = _me(uid)
+    if u.get('referred_by'):
+        return {'ok': True}
+    referrer = db.query('SELECT * FROM users WHERE id=?', (ref,), one=True)
+    if not referrer:
+        return {'ok': True}
+    db.execute('UPDATE users SET referred_by=? WHERE id=?', (ref, uid))
+    notify(ref, '🎉 По вашей ссылке присоединился ' + (u['name'] or 'новый пользователь'), push=True)
+    return {'ok': True}
+
+
+# --------------------------------------------------------------------------
+# Подписки на новые заказы
+# --------------------------------------------------------------------------
+
+@app.get('/api/subscriptions')
+def list_subscriptions(uid: int = Depends(get_current_user)):
+    rows = db.query('SELECT * FROM subscriptions WHERE user_id=? ORDER BY id ASC', (uid,))
+    return [{'id': s['id'], 'city': s.get('city') or '', 'type': s.get('type') or ''} for s in rows]
+
+
+@app.post('/api/subscriptions')
+def add_subscription(body: dict = None, uid: int = Depends(get_current_user)):
+    body = body or {}
+    city = str(body.get('city', '') or '').strip()
+    otype = str(body.get('type', '') or '').strip()
+    dup = db.query('SELECT id FROM subscriptions WHERE user_id=? AND city=? AND type=?', (uid, city, otype), one=True)
+    if not dup:
+        db.execute('INSERT INTO subscriptions (user_id, city, type, created_at) VALUES (?,?,?,?)',
+                   (uid, city, otype, now_ms()))
+    return list_subscriptions(uid)
+
+
+@app.delete('/api/subscriptions/{sub_id}')
+def delete_subscription(sub_id: int, uid: int = Depends(get_current_user)):
+    db.execute('DELETE FROM subscriptions WHERE id=? AND user_id=?', (sub_id, uid))
+    return list_subscriptions(uid)
+
+
+def notify_subscribers(order):
+    """Шлёт уведомления подписчикам (город/тип совпали с подпиской)."""
+    city = (order.get('city') or '') or ''
+    otype = (order.get('type') or '') or ''
+    rows = db.query("SELECT user_id FROM subscriptions WHERE (city='' OR city=?) AND (type='' OR type=?)", (city, otype))
+    for s in rows:
+        suid = s['user_id']
+        if suid == order['author_id']:
+            continue
+        notify(suid, '🔔 Новый заказ в ' + (order.get('city') or '') + ': «' + order['title'] + '» · ' +
+               str(order['price']) + ' ₽', push=True, order_id=order['id'])
+
+
+# --------------------------------------------------------------------------
 # Orders
 # --------------------------------------------------------------------------
 
@@ -419,6 +489,11 @@ def create_order(body: dict = None, uid: int = Depends(get_current_user)):
     post_to_channel('🆕 Новый заказ\n\n«' + str(body['title']).strip() + '»\n📦 ' + str(body['type']) +
                     '\n🏙 ' + (city or '—') + '\n💰 ' + str(body['price']) + ' ₽\n🕐 ' +
                     str(body['datetime']).replace('T', ' '), order_id)
+    try:
+        notify_subscribers({'id': order_id, 'author_id': uid, 'title': str(body['title']).strip(),
+                            'city': city, 'type': str(body['type']), 'price': str(body['price'])})
+    except Exception:
+        pass
     return mutation_result(order_id, uid)
 
 
@@ -629,6 +704,50 @@ def delete_order(order_id: str, uid: int = Depends(get_current_user)):
     db.execute('DELETE FROM reports WHERE order_id=?', (order_id,))
     db.execute('DELETE FROM orders WHERE id=?', (order_id,))
     return {'deleted': True}
+
+
+@app.get('/api/admin/stats')
+def admin_stats(uid: int = Depends(get_current_user)):
+    _ensure_admin(uid)
+    week = now_ms() - 7 * 86400000
+    month = now_ms() - 30 * 86400000
+
+    def cnt(sql, *args):
+        r = db.query(sql, args, one=True) or {}
+        return int(r.get('c', 0) or 0)
+
+    rows = db.query(
+        "SELECT status, COUNT(*) AS c FROM orders WHERE status IN ('open','done','cancelled') GROUP BY status")
+    by_status = {r['status']: int(r['c'] or 0) for r in rows}
+    total = by_status.get('open', 0) + by_status.get('done', 0) + by_status.get('cancelled', 0)
+    by_city = db.query(
+        "SELECT city, COUNT(*) AS c FROM orders WHERE status='open' AND city != '' GROUP BY city ORDER BY c DESC LIMIT 6")
+    total_responses = cnt('SELECT COUNT(*) AS c FROM responses')
+    workers = cnt("SELECT COUNT(*) AS c FROM users WHERE role IN ('worker','both')")
+    customers = cnt("SELECT COUNT(*) AS c FROM users WHERE role IN ('customer','both')")
+    new_users_week = cnt('SELECT COUNT(*) AS c FROM users WHERE created_at>=?', week)
+    new_users_month = cnt('SELECT COUNT(*) AS c FROM users WHERE created_at>=?', month)
+    new_orders_week = cnt('SELECT COUNT(*) AS c FROM orders WHERE created_at>=?', week)
+    new_orders_month = cnt('SELECT COUNT(*) AS c FROM orders WHERE created_at>=?', month)
+    responses_week = cnt('SELECT COUNT(*) AS c FROM responses WHERE created_at>=?', week)
+    subscribers = cnt('SELECT COUNT(*) AS c FROM subscriptions')
+    return {
+        'totalOrders': total,
+        'openOrders': by_status.get('open', 0),
+        'doneOrders': by_status.get('done', 0),
+        'cancelledOrders': by_status.get('cancelled', 0),
+        'ordersWeek': new_orders_week,
+        'ordersMonth': new_orders_month,
+        'totalResponses': total_responses,
+        'responsesWeek': responses_week,
+        'totalUsers': cnt('SELECT COUNT(*) AS c FROM users'),
+        'workers': workers,
+        'customers': customers,
+        'usersWeek': new_users_week,
+        'usersMonth': new_users_month,
+        'subscribers': subscribers,
+        'byCity': [{'city': r['city'], 'count': int(r['c'] or 0)} for r in by_city],
+    }
 
 
 @app.get('/api/admin/reports')

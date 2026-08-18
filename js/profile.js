@@ -122,6 +122,16 @@
       ]);
       contentEl.appendChild(pushCard);
 
+      /* Пригласи друга */
+      var invCard = U.el('div', { class: 'card', style: { margin: '0 14px 10px' } }, [
+        U.el('div', { class: 'section-h', style: { margin: '0 0 4px' }, text: 'Пригласи друга' }),
+        U.el('div', { class: 'report-meta', style: { margin: '0 0 10px' }, text: 'Приведено друзей: ' + (me.referrals || 0) }),
+        U.el('button', { class: 'btn primary btn-sm', onclick: function () { inviteFriend(me.id); } }, [
+          U.el('span', { text: 'Поделиться ссылкой' })
+        ])
+      ]);
+      contentEl.appendChild(invCard);
+
       /* Модерация (админ) */
       if (me.isAdmin) {
         var admCard = U.el('div', { class: 'card', style: { margin: '0 14px 10px' } }, [
@@ -132,6 +142,9 @@
             ]),
             U.el('button', { class: 'btn ghost btn-sm', onclick: function () { openAdminBlocked(); } }, [
               U.el('span', { text: 'Заблокированные' })
+            ]),
+            U.el('button', { class: 'btn ghost btn-sm', onclick: function () { openAdminStats(); } }, [
+              U.el('span', { text: 'Статистика' })
             ])
           ])
         ]);
@@ -225,6 +238,77 @@
         U.toast('«' + name + '» восстановлен');
         openAdminBlocked();
       }).catch(function (err) { U.toast(err.message || 'Не удалось восстановить'); });
+    }
+
+    /* ---- Приглашение друга ---- */
+    function inviteFriend(myId) {
+      var url;
+      if (T.isTg && T.botName) {
+        url = 'https://t.me/' + T.botName + '?startapp=ref_' + myId;
+      } else {
+        url = global.location.origin + '/?startapp=ref_' + myId;
+      }
+      var text = '⚡ Подработка 24 — присоединяйся по моей ссылке:\n' + url;
+
+      function copyIt() {
+        if (T.tg && T.tg.setClipboardText) {
+          try { T.tg.setClipboardText(text); } catch (e) {}
+        } else {
+          U.copyText(text);
+        }
+        U.toast('Ссылка скопирована — отправьте другу');
+        T.impact('medium');
+      }
+      if (navigator.share) {
+        navigator.share({ title: 'Подработка 24', text: text, url: url }).catch(function () { copyIt(); });
+      } else {
+        copyIt();
+      }
+    }
+
+    /* ---- Статистика (админ) ---- */
+    function openAdminStats() {
+      Store.adminStats().then(function (s) {
+        if (!s) { U.toast('Статистика недоступна'); return; }
+        var rows = [
+          ['Всего заказов', s.totalOrders],
+          ['Открыты сейчас', s.openOrders],
+          ['Завершено', s.doneOrders],
+          ['Отменено', s.cancelledOrders],
+          ['Заказов за 7 дней', s.ordersWeek],
+          ['Заказов за 30 дней', s.ordersMonth],
+          ['Откликов всего', s.totalResponses],
+          ['Откликов за 7 дней', s.responsesWeek],
+          ['Пользователей', s.totalUsers],
+          ['Ищут работу', s.workers],
+          ['Нужны работники', s.customers],
+          ['Новых за 7 дней', s.usersWeek],
+          ['Новых за 30 дней', s.usersMonth],
+          ['Подписки на заказы', s.subscribers]
+        ];
+        var body = U.el('div', {});
+        rows.forEach(function (r) {
+          body.appendChild(U.el('div', { class: 'report-head', style: { justifyContent: 'space-between', padding: '8px 0' } }, [
+            U.el('span', { class: 'report-order', text: r[0] }),
+            U.el('span', { class: 'report-reason-badge', text: r[1] })
+          ]));
+        });
+        if (s.byCity && s.byCity.length) {
+          body.appendChild(U.el('div', { class: 'section-h', style: { margin: '12px 0 4px' }, text: 'Города (открытые заказы)' }));
+          s.byCity.forEach(function (c) {
+            body.appendChild(U.el('div', { class: 'report-head', style: { justifyContent: 'space-between', padding: '6px 0' } }, [
+              U.el('span', { class: 'report-order', text: c.city }),
+              U.el('span', { class: 'report-reason-badge', text: c.count })
+            ]));
+          });
+        }
+        adminModal = U.modal({
+          title: 'Статистика',
+          sub: 'Администратор',
+          body: body,
+          buttons: [{ text: 'Закрыть', cls: 'ghost' }]
+        });
+      });
     }
 
     var adminModal = null;

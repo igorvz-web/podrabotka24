@@ -38,8 +38,16 @@ CREATE TABLE IF NOT EXISTS users (
   is_admin INTEGER DEFAULT 0,
   blocked INTEGER DEFAULT 0,
   tg_notify INTEGER DEFAULT 1,
+  referred_by INTEGER DEFAULT 0,
   created_at INTEGER,
   last_login INTEGER
+);
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  city TEXT DEFAULT '',
+  type TEXT DEFAULT '',
+  created_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS tokens (
   token TEXT PRIMARY KEY,
@@ -115,8 +123,16 @@ CREATE TABLE IF NOT EXISTS users (
   is_admin INTEGER DEFAULT 0,
   blocked INTEGER DEFAULT 0,
   tg_notify INTEGER DEFAULT 1,
+  referred_by BIGINT DEFAULT 0,
   created_at BIGINT,
   last_login BIGINT
+);
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id BIGSERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  city TEXT DEFAULT '',
+  type TEXT DEFAULT '',
+  created_at BIGINT
 );
 CREATE TABLE IF NOT EXISTS tokens (
   token TEXT PRIMARY KEY,
@@ -289,6 +305,10 @@ def init_db():
             execute('ALTER TABLE users ADD COLUMN ' + col)
         except Exception:
             pass
+    try:
+        execute('ALTER TABLE users ADD COLUMN referred_by INTEGER DEFAULT 0')
+    except Exception:
+        pass
     try:
         execute('ALTER TABLE orders ADD COLUMN boosted_until INTEGER DEFAULT 0')
     except Exception:
