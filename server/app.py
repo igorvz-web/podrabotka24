@@ -362,6 +362,44 @@ def test_channel():
                 result['send_with_button'] = {'ok': False, 'http': e.code, 'body': body}
         except Exception as e:
             result['send_with_button'] = {'ok': False, 'reason': str(e)[:300]}
+        try:
+            payload = {'chat_id': channel, 'text': '🔗 Тест с обычной url-кнопкой',
+                       'reply_markup': json.dumps({
+                           'inline_keyboard': [[{'text': 'Открыть заказ', 'url': app_url}]]
+                       })}
+            req = urllib.request.Request(
+                'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
+                data=urllib.parse.urlencode(payload).encode(),
+                headers={'Content-Type': 'application/x-www-form-urlencoded'})
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    result['send_url_button'] = json.loads(r.read().decode('utf-8'))
+            except urllib.error.HTTPError as e:
+                body = e.read().decode('utf-8', 'replace')[:500]
+                result['send_url_button'] = {'ok': False, 'http': e.code, 'body': body}
+        except Exception as e:
+            result['send_url_button'] = {'ok': False, 'reason': str(e)[:300]}
+        try:
+            admins = auth.ADMIN_TG_IDS
+            if admins:
+                payload = {'chat_id': admins[0], 'text': '🔘 Тест web_app-кнопки в личке',
+                           'reply_markup': json.dumps({
+                               'inline_keyboard': [[{'text': 'Открыть заказ', 'web_app': {'url': app_url}}]]
+                           })}
+                req = urllib.request.Request(
+                    'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
+                    data=urllib.parse.urlencode(payload).encode(),
+                    headers={'Content-Type': 'application/x-www-form-urlencoded'})
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as r:
+                        result['send_webapp_private'] = json.loads(r.read().decode('utf-8'))
+                except urllib.error.HTTPError as e:
+                    body = e.read().decode('utf-8', 'replace')[:500]
+                    result['send_webapp_private'] = {'ok': False, 'http': e.code, 'body': body}
+            else:
+                result['send_webapp_private'] = {'ok': False, 'reason': 'нет ADMIN_TG_IDS'}
+        except Exception as e:
+            result['send_webapp_private'] = {'ok': False, 'reason': str(e)[:300]}
     else:
         result['send_with_button'] = {'ok': False, 'reason': 'BASE_URL не задан — кнопка не добавляется'}
     return result
