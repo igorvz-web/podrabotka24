@@ -380,7 +380,7 @@ def test_channel():
         except Exception as e:
             result['send_url_button'] = {'ok': False, 'reason': str(e)[:300]}
         try:
-            admins = auth.ADMIN_TG_IDS
+            admins = _admin_tg_ids()
             if admins:
                 payload = {'chat_id': admins[0], 'text': '🔘 Тест web_app-кнопки в личке',
                            'reply_markup': json.dumps({
