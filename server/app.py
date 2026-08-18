@@ -92,8 +92,14 @@ def _notify_admin_fail(text):
         admins = auth.ADMIN_TG_IDS
     except Exception:
         admins = []
-    if admins:
-        tg_push(int(admins[0]), text)
+    if not admins:
+        return
+    try:
+        u = db.query('SELECT id FROM users WHERE tg_id=?', (admins[0],), one=True)
+        if u:
+            tg_push(u['id'], text)
+    except Exception:
+        pass
 
 
 def get_current_user(authorization: str = Header(None)):
