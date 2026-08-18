@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import threading
 import time
 import urllib.parse
@@ -973,17 +974,36 @@ def _bot_user_by_tg(tg_id, first_name, username):
 
 def _bot_welcome(chat_id):
     try:
+        try:
+            db.execute('DELETE FROM kv WHERE k=?', ('bot_pend_' + str(chat_id),))
+        except Exception:
+            pass
         markup = {'inline_keyboard': [[{'text': 'Открыть приложение',
                                         'url': (auth.BASE_URL or '').rstrip('/') + '/'}]]}
         _tg_call('sendMessage', {
             'chat_id': chat_id,
             'text': 'Привет! Я бот «Подработка 24» 🤝\n\n'
                     'Напишите сообщением вашу вакансию или подработку, например:\n\n'
-                    '«Нужен грузчик на 4 часа, 2500 ₽, Москва»\n\n'
-                    'Я опубликую её в группе и в приложении.',
+                    '«Нужен грузчик на 4 часа»\n\n'
+                    'Дальше я задам пару вопросов (тип, цена, город) и опубликую заявку '
+                    'в группе и в приложении.',
             'reply_markup': json.dumps(markup)})
     except Exception:
         pass
+
+
+def _bot_get_pend(chat_id):
+    s = _kv_get('bot_pend_' + str(chat_id))
+    if not s:
+        return None
+    try:
+        return json.loads(s)
+    except Exception:
+        return None
+
+
+def _bot_save_pend(chat_id, pend):
+    _kv_set('bot_pend_' + str(chat_id), json.dumps(pend, ensure_ascii=False))
 
 
 def _bot_ask_type(chat_id):
@@ -992,10 +1012,63 @@ def _bot_ask_type(chat_id):
         kb.append([{'text': lbl, 'callback_data': 'p24vt_' + k} for k, lbl in BOT_TYPES[i:i + 2]])
     try:
         _tg_call('sendMessage', {'chat_id': chat_id,
-                                 'text': '👌 Принято! Выберите тип работы:',
+                                 'text': '👌 Принято! Теперь заполним заявку.\n\nШаг 1 из 3 — тип работы:',
                                  'reply_markup': json.dumps({'inline_keyboard': kb})})
     except Exception:
         pass
+
+
+def _bot_ask_price(chat_id):
+    try:
+        _tg_call('sendMessage', {'chat_id': chat_id,
+                                 'text': '💰 Шаг 2 из 3 — сколько платите?\n\n'
+                                         'Напишите сумму числом, например: 2500\n'
+                                         'Или отправьте «договорная», если цена не фиксирована.'})
+    except Exception:
+        pass
+
+
+def _bot_ask_city(chat_id):
+    try:
+        _tg_call('sendMessage', {'chat_id': chat_id,
+                                 'text': '🏙 Шаг 3 из 3 — в каком городе?',
+                                 'reply_markup': json.dumps({
+                                     'inline_keyboard': [[{'text': 'Пропустить', 'callback_data': 'p24city_skip'}]]})})
+    except Exception:
+        pass
+
+
+def _bot_show_confirm(chat_id, pend):
+    price = int(pend.get('price') or 0)
+    price_txt = str(price) + ' ₽' if price else 'договорная'
+    city = (pend.get('city') or '').strip()
+    text = ('📝 Проверьте заявку:\n\n'
+            '«' + pend['title'] + '»\n'
+            '📦 ' + pend['type'] + '\n'
+            '💰 ' + price_txt + '\n'
+            '🏙 ' + (city or '—') + '\n\n'
+            'Всё верно?')
+    try:
+        _tg_call('sendMessage', {'chat_id': chat_id, 'text': text, 'reply_markup': json.dumps({
+            'inline_keyboard': [
+                [{'text': '✅ Опубликовать', 'callback_data': 'p24pub_yes'}],
+                [{'text': '✏️ Заполнить заново', 'callback_data': 'p24pub_reset'}],
+            ]})})
+    except Exception:
+        pass
+
+
+def _parse_price(text):
+    t = (text or '').strip().lower()
+    if not t or t in ('договорная', 'договорную', 'по договорённости', 'не знаю', 'без оплаты', '-'):
+        return 0
+    m = re.search(r'\d[\d\s]{0,8}', t)
+    if not m:
+        return 0
+    try:
+        return int(re.sub(r'\s+', '', m.group(0)))
+    except Exception:
+        return 0
 
 
 def _bot_handle_message(msg):
@@ -1012,49 +1085,52 @@ def _bot_handle_message(msg):
         return
     if text.startswith('/'):
         return
+    pend = _bot_get_pend(chat_id)
+    if pend and pend.get('step') == 'price':
+        pend['price'] = _parse_price(text)
+        pend['step'] = 'city'
+        _bot_save_pend(chat_id, pend)
+        _bot_ask_city(chat_id)
+        return
+    if pend and pend.get('step') == 'city':
+        pend['city'] = text[:60]
+        pend['step'] = 'confirm'
+        _bot_save_pend(chat_id, pend)
+        _bot_show_confirm(chat_id, pend)
+        return
     u = _bot_user_by_tg(tg_id, frm.get('first_name') or '', frm.get('username') or '')
     if not u:
         return
-    _kv_set('bot_pend_' + str(chat_id), json.dumps(
-        {'user_id': u['id'], 'title': text[:300]}, ensure_ascii=False))
+    _bot_save_pend(chat_id, {'user_id': u['id'], 'title': text[:300],
+                             'type': '', 'price': 0, 'city': '', 'step': 'type'})
     _bot_ask_type(chat_id)
 
 
-def _bot_create_order(chat_id, cqid, msg_id, type_key):
-    label = BOT_TYPE_LABEL.get(type_key)
-    pend_s = _kv_get('bot_pend_' + str(chat_id))
-    if not label or not pend_s:
-        try:
-            _tg_call('answerCallbackQuery', {'callback_query_id': cqid,
-                                             'text': 'Срок действия истёк — напишите сообщение заново'})
-        except Exception:
-            pass
-        return
-    pend = json.loads(pend_s)
-    try:
-        db.execute('DELETE FROM kv WHERE k=?', ('bot_pend_' + str(chat_id),))
-    except Exception:
-        pass
+def _publish_order(chat_id, pend):
     order_id = 'o_' + uuid.uuid4().hex[:8]
     title = (pend.get('title') or '').strip()[:300] or 'Без названия'
+    otype = pend.get('type') or 'Другое'
+    price = int(pend.get('price') or 0)
+    city = (pend.get('city') or '').strip()
     dt = time.strftime('%Y-%m-%dT%H:%M')
     try:
         db.execute(
             'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status, city) '
             'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-            (order_id, label, title, title, '', 0, 1, 0, 0, '', dt, pend['user_id'], now_ms(), 'open', ''))
+            (order_id, otype, title, title, '', price, 1, 0, 0, '', dt, pend['user_id'], now_ms(), 'open', city))
     except Exception:
-        return
+        return None
     try:
-        _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': '✅ Опубликовано'})
-        _tg_call('editMessageText', {'chat_id': chat_id, 'message_id': msg_id,
-                                     'text': '✅ Ваш заказ опубликован в группе и в приложении!\n\n«' + title + '»\n📦 ' + label + '\n💰 Договорная'})
+        db.execute('DELETE FROM kv WHERE k=?', ('bot_pend_' + str(chat_id),))
     except Exception:
         pass
-    text = '🆕 Новый заказ\n\n«' + title + '»\n📦 ' + label + '\n💰 Договорная\n🕐 ' + dt.replace('T', ' ')
+    price_txt = str(price) + ' ₽' if price else 'договорная'
+    text = '🆕 Новый заказ\n\n«' + title + '»\n📦 ' + otype + '\n💰 ' + price_txt
+    if city:
+        text += '\n🏙 ' + city
+    text += '\n🕐 ' + dt.replace('T', ' ')
     app_url = (auth.BASE_URL or '').rstrip('/') + '/?startapp=' + order_id
     mid = post_to_channel(text, buttons=[
-        [{'text': 'Вакансия закрыта', 'callback_data': 'p24close_' + order_id}],
         [{'text': 'Открыть в приложении', 'url': app_url}],
     ])
     if mid:
@@ -1065,12 +1141,13 @@ def _bot_create_order(chat_id, cqid, msg_id, type_key):
         pass
     try:
         notify_subscribers({'id': order_id, 'author_id': pend['user_id'], 'title': title,
-                            'city': '', 'type': label, 'price': 'договорная'})
+                            'city': city, 'type': otype, 'price': price})
     except Exception:
         pass
+    return order_id, title, otype, price_txt
 
 
-def _bot_close_order(cqid, tg_id, order_id):
+def _bot_close_order(cqid, chat_id, msg_id, tg_id, order_id):
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
         try:
@@ -1095,6 +1172,10 @@ def _bot_close_order(cqid, tg_id, order_id):
     db.execute("UPDATE orders SET status='done' WHERE id=?", (order_id,))
     try:
         _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': '✅ Вакансия закрыта'})
+        if chat_id and msg_id:
+            _tg_call('editMessageText', {'chat_id': chat_id, 'message_id': msg_id,
+                                         'text': '✅ Вакансия закрыта',
+                                         'reply_markup': json.dumps({'inline_keyboard': []})})
     except Exception:
         pass
     info_s = _kv_get('bot_msg_' + order_id)
@@ -1118,14 +1199,79 @@ def _bot_handle_callback(cb):
     tg_id = frm.get('id')
     data = cb.get('data') or ''
     cqid = cb.get('id')
+    m = cb.get('message') or {}
+    chat_id = (m.get('chat') or {}).get('id')
+    msg_id = m.get('message_id')
     if not tg_id or not cqid:
         return
     if data.startswith('p24vt_'):
-        m = cb.get('message') or {}
-        _bot_create_order((m.get('chat') or {}).get('id'), cqid, m.get('message_id'),
-                          data[len('p24vt_'):])
+        label = BOT_TYPE_LABEL.get(data[len('p24vt_'):])
+        pend = _bot_get_pend(chat_id)
+        if not label or not pend or pend.get('step') != 'type':
+            try:
+                _tg_call('answerCallbackQuery', {'callback_query_id': cqid,
+                                                 'text': 'Срок действия истёк — напишите сообщение заново'})
+            except Exception:
+                pass
+            return
+        pend['type'] = label
+        pend['step'] = 'price'
+        _bot_save_pend(chat_id, pend)
+        try:
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': label})
+        except Exception:
+            pass
+        _bot_ask_price(chat_id)
+    elif data == 'p24city_skip':
+        pend = _bot_get_pend(chat_id)
+        if not pend or pend.get('step') != 'city':
+            return
+        pend['city'] = ''
+        pend['step'] = 'confirm'
+        _bot_save_pend(chat_id, pend)
+        try:
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Пропущено'})
+        except Exception:
+            pass
+        _bot_show_confirm(chat_id, pend)
+    elif data == 'p24pub_reset':
+        pend = _bot_get_pend(chat_id)
+        if pend:
+            pend['step'] = 'type'
+            pend['type'] = ''
+            _bot_save_pend(chat_id, pend)
+        try:
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Начнём заново'})
+        except Exception:
+            pass
+        _bot_ask_type(chat_id)
+    elif data == 'p24pub_yes':
+        pend = _bot_get_pend(chat_id)
+        if not pend or pend.get('step') != 'confirm':
+            try:
+                _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Срок действия истёк'})
+            except Exception:
+                pass
+            return
+        res = _publish_order(chat_id, pend)
+        if not res:
+            return
+        order_id, title, otype, price_txt = res
+        app_url = (auth.BASE_URL or '').rstrip('/') + '/?startapp=' + order_id
+        try:
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': '✅ Опубликовано'})
+            _tg_call('editMessageText', {'chat_id': chat_id, 'message_id': msg_id,
+                                         'text': '✅ Заказ опубликован в группе и в приложении!\n\n'
+                                                 '«' + title + '»\n📦 ' + otype + '\n💰 ' + price_txt +
+                                                 '\n\nЗакрыть вакансию можно кнопкой ниже.',
+                                         'reply_markup': json.dumps({'inline_keyboard': [
+                                             [{'text': 'Вакансия закрыта', 'callback_data': 'p24close_' + order_id}],
+                                             [{'text': 'Открыть в приложении', 'url': app_url}],
+                                         ]})})
+        except Exception:
+            pass
     elif data.startswith('p24close_'):
-        _bot_close_order(cqid, tg_id, data[len('p24close_'):])
+        _bot_close_order(cqid, chat_id, msg_id, tg_id, data[len('p24close_'):])
 
 
 def pin_group_welcome():
