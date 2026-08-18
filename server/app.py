@@ -354,8 +354,12 @@ def test_channel():
                 'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
                 data=urllib.parse.urlencode(payload).encode(),
                 headers={'Content-Type': 'application/x-www-form-urlencoded'})
-            with urllib.request.urlopen(req, timeout=10) as r:
-                result['send_with_button'] = json.loads(r.read().decode('utf-8'))
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    result['send_with_button'] = json.loads(r.read().decode('utf-8'))
+            except urllib.error.HTTPError as e:
+                body = e.read().decode('utf-8', 'replace')[:500]
+                result['send_with_button'] = {'ok': False, 'http': e.code, 'body': body}
         except Exception as e:
             result['send_with_button'] = {'ok': False, 'reason': str(e)[:300]}
     else:
