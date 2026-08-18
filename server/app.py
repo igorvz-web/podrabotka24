@@ -49,7 +49,7 @@ def tg_push(user_id, text, order_id=None):
         return
     payload = {'chat_id': u['tg_id'], 'text': text}
     if order_id and auth.BASE_URL:
-        app_url = auth.BASE_URL.rstrip('/') + '/?startapp=o_' + order_id
+        app_url = auth.BASE_URL.rstrip('/') + '/?startapp=' + order_id
         payload['reply_markup'] = json.dumps({
             'inline_keyboard': [[{'text': 'Открыть заказ', 'web_app': {'url': app_url}}]]
         })
@@ -70,7 +70,7 @@ def post_to_channel(text, order_id=None):
     channel = os.environ.get('CHANNEL_ID', '').strip() or '@podrabotka_orders'
     payload = {'chat_id': channel, 'text': text}
     if order_id and auth.BASE_URL:
-        app_url = auth.BASE_URL.rstrip('/') + '/?startapp=o_' + order_id
+        app_url = auth.BASE_URL.rstrip('/') + '/?startapp=' + order_id
         payload['reply_markup'] = json.dumps({
             'inline_keyboard': [[{'text': 'Открыть заказ', 'url': app_url}]]
         })

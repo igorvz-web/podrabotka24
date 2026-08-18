@@ -135,8 +135,8 @@
           }
 
           /* Редиплинк: t.me/бот?startapp=o_<id> или кнопка в уведомлении → открываем заказ. */
-          var m = /^o_(\d+)$/.exec(T.startParam || qs('startapp') || '');
-          if (m) go('order', Number(m[1]));
+          var m = /^o_[0-9a-f]+$/i.exec(T.startParam || qs('startapp') || '');
+          if (m) go('order', m[0]);
           else go('feed');
 
           /* Поллинг новых событий: тост + бейдж на колокольчике. */

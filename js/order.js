@@ -540,7 +540,7 @@
     /* ---- Поделиться ---- */
     function share() {
       var text = '💰 ' + order.price.toLocaleString('ru-RU') + ' ₽ — ' + order.title + '\n📍 ' + order.address + '\n🕐 ' + U.fmtDateTime(order.datetime) + '\n\n⚡ Подработка 24';
-      var url = 'https://t.me/' + T.botName + '?startapp=o_' + order.id;
+      var url = 'https://t.me/' + T.botName + '?startapp=' + order.id;
       var full = text + '\n' + url;
 
       function copyIt() {
