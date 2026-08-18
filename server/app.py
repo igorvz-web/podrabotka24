@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import re
 import threading
@@ -20,7 +20,7 @@ WEB_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 db.init_db()
 seed.seed()
 
-app = FastAPI(title='Подработка 24 API', version='1.0')
+app = FastAPI(title='РџРѕРґСЂР°Р±РѕС‚РєР° 24 API', version='1.0')
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,7 +42,7 @@ def notify(user_id, text, push=False, order_id=None):
 
 
 def tg_push(user_id, text, order_id=None):
-    """Личное сообщение пользователю через Bot API (если задан BOT_TOKEN и включены push)."""
+    """Р›РёС‡РЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЋ С‡РµСЂРµР· Bot API (РµСЃР»Рё Р·Р°РґР°РЅ BOT_TOKEN Рё РІРєР»СЋС‡РµРЅС‹ push)."""
     if not auth.BOT_TOKEN:
         return
     u = db.query('SELECT tg_id, tg_notify FROM users WHERE id=?', (user_id,), one=True)
@@ -52,7 +52,7 @@ def tg_push(user_id, text, order_id=None):
     if order_id and auth.BASE_URL:
         app_url = auth.BASE_URL.rstrip('/') + '/?startapp=' + order_id
         payload['reply_markup'] = json.dumps({
-            'inline_keyboard': [[{'text': 'Открыть заказ', 'web_app': {'url': app_url}}]]
+            'inline_keyboard': [[{'text': 'РћС‚РєСЂС‹С‚СЊ Р·Р°РєР°Р·', 'web_app': {'url': app_url}}]]
         })
     try:
         req = urllib.request.Request(
@@ -65,7 +65,7 @@ def tg_push(user_id, text, order_id=None):
 
 
 def post_to_channel(text, order_id=None, buttons=None):
-    """Публикует заказ в группу-витрину (GROUP_ID). Возвращает message_id или None."""
+    """РџСѓР±Р»РёРєСѓРµС‚ Р·Р°РєР°Р· РІ РіСЂСѓРїРїСѓ-РІРёС‚СЂРёРЅСѓ (GROUP_ID). Р’РѕР·РІСЂР°С‰Р°РµС‚ message_id РёР»Рё None."""
     if not auth.BOT_TOKEN:
         return None
     group = os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
@@ -74,9 +74,9 @@ def post_to_channel(text, order_id=None, buttons=None):
         buttons = []
         if order_id and auth.BASE_URL:
             app_url = auth.BASE_URL.rstrip('/') + '/?startapp=' + order_id
-            # web_app-кнопки в группах и каналах Telegram запрещает (только личные чаты),
-            # поэтому обычная url-кнопка: открывает приложение во встроенном браузере с SDK
-            buttons = [[{'text': 'Открыть заказ', 'url': app_url}]]
+            # web_app-РєРЅРѕРїРєРё РІ РіСЂСѓРїРїР°С… Рё РєР°РЅР°Р»Р°С… Telegram Р·Р°РїСЂРµС‰Р°РµС‚ (С‚РѕР»СЊРєРѕ Р»РёС‡РЅС‹Рµ С‡Р°С‚С‹),
+            # РїРѕСЌС‚РѕРјСѓ РѕР±С‹С‡РЅР°СЏ url-РєРЅРѕРїРєР°: РѕС‚РєСЂС‹РІР°РµС‚ РїСЂРёР»РѕР¶РµРЅРёРµ РІРѕ РІСЃС‚СЂРѕРµРЅРЅРѕРј Р±СЂР°СѓР·РµСЂРµ СЃ SDK
+            buttons = [[{'text': 'РћС‚РєСЂС‹С‚СЊ Р·Р°РєР°Р·', 'url': app_url}]]
     if buttons:
         payload['reply_markup'] = json.dumps({'inline_keyboard': buttons})
     try:
@@ -87,11 +87,11 @@ def post_to_channel(text, order_id=None, buttons=None):
         with urllib.request.urlopen(req, timeout=5) as r:
             resp = json.loads(r.read().decode('utf-8'))
         if not resp.get('ok'):
-            _notify_admin_fail('Канал-витрина: ' + str(resp.get('description', 'ошибка')))
+            _notify_admin_fail('РљР°РЅР°Р»-РІРёС‚СЂРёРЅР°: ' + str(resp.get('description', 'РѕС€РёР±РєР°')))
             return None
         return (resp.get('result') or {}).get('message_id')
     except Exception as e:
-        _notify_admin_fail('Канал-витрина: ' + str(e)[:200])
+        _notify_admin_fail('РљР°РЅР°Р»-РІРёС‚СЂРёРЅР°: ' + str(e)[:200])
         return None
 
 
@@ -106,7 +106,7 @@ def _notify_admin_fail(text):
     try:
         u = db.query('SELECT id FROM users WHERE tg_id=?', (admins[0],), one=True)
         if u:
-            notify(u['id'], '⚠️ ' + text)
+            notify(u['id'], 'вљ пёЏ ' + text)
     except Exception:
         pass
     try:
@@ -122,29 +122,29 @@ def _notify_admin_fail(text):
 
 def get_current_user(authorization: str = Header(None)):
     if not authorization or not authorization.startswith('Bearer '):
-        raise HTTPException(401, 'Требуется авторизация')
+        raise HTTPException(401, 'РўСЂРµР±СѓРµС‚СЃСЏ Р°РІС‚РѕСЂРёР·Р°С†РёСЏ')
     uid = auth.user_from_token(authorization[len('Bearer '):])
     if not uid:
-        raise HTTPException(401, 'Неверный токен сессии')
+        raise HTTPException(401, 'РќРµРІРµСЂРЅС‹Р№ С‚РѕРєРµРЅ СЃРµСЃСЃРёРё')
     return uid
 
 
 def _ensure_admin(uid):
     u = db.query('SELECT * FROM users WHERE id=?', (uid,), one=True)
     if not u or not u.get('is_admin'):
-        raise HTTPException(403, 'Требуются права администратора')
+        raise HTTPException(403, 'РўСЂРµР±СѓСЋС‚СЃСЏ РїСЂР°РІР° Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°')
 
 
 @app.get('/api/bot/info')
 def bot_info():
-    """Имя пользователя бота — для корректных ссылок «Поделиться». Без авторизации."""
+    """РРјСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ Р±РѕС‚Р° вЂ” РґР»СЏ РєРѕСЂСЂРµРєС‚РЅС‹С… СЃСЃС‹Р»РѕРє В«РџРѕРґРµР»РёС‚СЊСЃСЏВ». Р‘РµР· Р°РІС‚РѕСЂРёР·Р°С†РёРё."""
     return {'username': auth.get_bot_username() or None}
 
 
 def _compute_admin(tg_id):
     admins = {x.strip() for x in os.environ.get('ADMIN_TG_IDS', '').split(',') if x.strip()}
     if not auth.BOT_TOKEN and tg_id == '999001':
-        return True  # демо-режим: демо-пользователь является админом
+        return True  # РґРµРјРѕ-СЂРµР¶РёРј: РґРµРјРѕ-РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ СЏРІР»СЏРµС‚СЃСЏ Р°РґРјРёРЅРѕРј
     return tg_id in admins
 
 
@@ -160,7 +160,7 @@ def _block_threshold():
 
 
 def send_admin_notif(text):
-    """Отправка сообщения администраторам через Bot API (если задан BOT_TOKEN)."""
+    """РћС‚РїСЂР°РІРєР° СЃРѕРѕР±С‰РµРЅРёСЏ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°Рј С‡РµСЂРµР· Bot API (РµСЃР»Рё Р·Р°РґР°РЅ BOT_TOKEN)."""
     if not auth.BOT_TOKEN:
         return
     for chat_id in _admin_tg_ids():
@@ -288,7 +288,7 @@ def my_notifications(user_id):
 def mutation_result(order_id, user_id):
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
-        raise HTTPException(404, 'Заказ не найден')
+        raise HTTPException(404, 'Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ')
     return {
         'order': order_payload(o),
         'myResponses': my_responses(user_id),
@@ -309,18 +309,18 @@ def api_auth(body: dict = None):
     if user:
         tg_id = user['tg_id']
     elif auth.BOT_TOKEN and init_data:
-        raise HTTPException(401, 'Неверная подпись initData')
+        raise HTTPException(401, 'РќРµРІРµСЂРЅР°СЏ РїРѕРґРїРёСЃСЊ initData')
     else:
-        # демо-вход (нет токена бота или приложение открыто вне Telegram)
+        # РґРµРјРѕ-РІС…РѕРґ (РЅРµС‚ С‚РѕРєРµРЅР° Р±РѕС‚Р° РёР»Рё РїСЂРёР»РѕР¶РµРЅРёРµ РѕС‚РєСЂС‹С‚Рѕ РІРЅРµ Telegram)
         tg_id = '999001'
-        user = {'tg_id': '999001', 'name': 'Иван Петров', 'username': 'demo_user', 'photo': ''}
+        user = {'tg_id': '999001', 'name': 'РРІР°РЅ РџРµС‚СЂРѕРІ', 'username': 'demo_user', 'photo': ''}
 
     is_admin = 1 if _compute_admin(tg_id) else 0
     row = db.query('SELECT * FROM users WHERE tg_id=?', (tg_id,), one=True)
     if not row:
         new_id = db.execute(
             'INSERT INTO users (tg_id, name, username, photo, role, skills, is_admin, created_at, last_login) VALUES (?,?,?,?,?,?,?,?,?)',
-            (tg_id, user['name'], user['username'], user['photo'], 'both', '["разнорабочий"]', is_admin,
+            (tg_id, user['name'], user['username'], user['photo'], 'both', '["СЂР°Р·РЅРѕСЂР°Р±РѕС‡РёР№"]', is_admin,
              now_ms(), now_ms()))
         row = db.query('SELECT * FROM users WHERE id=?', (new_id,), one=True)
     else:
@@ -334,7 +334,7 @@ def api_auth(body: dict = None):
 
 @app.get('/api/health')
 def health():
-    # Лёгкий запрос к БД, чтобы внешний пингер держал активными и Render, и базу (Neon)
+    # Р›С‘РіРєРёР№ Р·Р°РїСЂРѕСЃ Рє Р‘Р”, С‡С‚РѕР±С‹ РІРЅРµС€РЅРёР№ РїРёРЅРіРµСЂ РґРµСЂР¶Р°Р» Р°РєС‚РёРІРЅС‹РјРё Рё Render, Рё Р±Р°Р·Сѓ (Neon)
     db_ok = False
     try:
         db.query('SELECT 1')
@@ -351,7 +351,7 @@ def health():
 def _me(uid):
     u = db.query('SELECT * FROM users WHERE id=?', (uid,), one=True)
     if not u:
-        raise HTTPException(401, 'Пользователь не найден')
+        raise HTTPException(401, 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ')
     return u
 
 
@@ -388,7 +388,7 @@ def patch_me(body: dict = None, uid: int = Depends(get_current_user)):
 
 
 # --------------------------------------------------------------------------
-# Реферальная программа
+# Р РµС„РµСЂР°Р»СЊРЅР°СЏ РїСЂРѕРіСЂР°РјРјР°
 # --------------------------------------------------------------------------
 
 @app.post('/api/referral')
@@ -407,12 +407,12 @@ def post_referral(body: dict = None, uid: int = Depends(get_current_user)):
     if not referrer:
         return {'ok': True}
     db.execute('UPDATE users SET referred_by=? WHERE id=?', (ref, uid))
-    notify(ref, '🎉 По вашей ссылке присоединился ' + (u['name'] or 'новый пользователь'), push=True)
+    notify(ref, 'рџЋ‰ РџРѕ РІР°С€РµР№ СЃСЃС‹Р»РєРµ РїСЂРёСЃРѕРµРґРёРЅРёР»СЃСЏ ' + (u['name'] or 'РЅРѕРІС‹Р№ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ'), push=True)
     return {'ok': True}
 
 
 # --------------------------------------------------------------------------
-# Подписки на новые заказы
+# РџРѕРґРїРёСЃРєРё РЅР° РЅРѕРІС‹Рµ Р·Р°РєР°Р·С‹
 # --------------------------------------------------------------------------
 
 @app.get('/api/subscriptions')
@@ -440,21 +440,21 @@ def delete_subscription(sub_id: int, uid: int = Depends(get_current_user)):
 
 
 def notify_subscribers(order):
-    """Шлёт уведомления подписчикам (город/тип совпали с подпиской)."""
+    """РЁР»С‘С‚ СѓРІРµРґРѕРјР»РµРЅРёСЏ РїРѕРґРїРёСЃС‡РёРєР°Рј (РіРѕСЂРѕРґ/С‚РёРї СЃРѕРІРїР°Р»Рё СЃ РїРѕРґРїРёСЃРєРѕР№)."""
     city = (order.get('city') or '') or ''
     otype = (order.get('type') or '') or ''
     rows = db.query("SELECT user_id FROM subscriptions WHERE (city='' OR city=?) AND (type='' OR type=?)", (city, otype))
-    where = ' в ' + city if city else ''
+    where = ' РІ ' + city if city else ''
     price = str(order.get('price') or 0)
     if not price or price == '0':
-        price = 'договорная'
+        price = 'РґРѕРіРѕРІРѕСЂРЅР°СЏ'
     else:
-        price = price + ' ₽'
+        price = price + ' в‚Ѕ'
     for s in rows:
         suid = s['user_id']
         if suid == order['author_id']:
             continue
-        notify(suid, '🔔 Новый заказ' + where + ': «' + order['title'] + '» · ' + price, push=True, order_id=order['id'])
+        notify(suid, 'рџ”” РќРѕРІС‹Р№ Р·Р°РєР°Р·' + where + ': В«' + order['title'] + 'В» В· ' + price, push=True, order_id=order['id'])
 
 
 # --------------------------------------------------------------------------
@@ -471,7 +471,7 @@ def list_orders(uid: int = Depends(get_current_user)):
 def get_order(order_id: str, uid: int = Depends(get_current_user)):
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
-        raise HTTPException(404, 'Заказ не найден')
+        raise HTTPException(404, 'Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ')
     return order_payload(o)
 
 
@@ -479,12 +479,12 @@ def get_order(order_id: str, uid: int = Depends(get_current_user)):
 def create_order(body: dict = None, uid: int = Depends(get_current_user)):
     u = _me(uid)
     if u.get('blocked'):
-        raise HTTPException(403, 'Ваш аккаунт заблокирован модерацией')
+        raise HTTPException(403, 'Р’Р°С€ Р°РєРєР°СѓРЅС‚ Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅ РјРѕРґРµСЂР°С†РёРµР№')
     body = body or {}
     required = ['type', 'title', 'address', 'price', 'datetime']
     for field in required:
         if not body.get(field):
-            raise HTTPException(400, 'Не заполнено поле: ' + field)
+            raise HTTPException(400, 'РќРµ Р·Р°РїРѕР»РЅРµРЅРѕ РїРѕР»Рµ: ' + field)
 
     order_id = 'o_' + uuid.uuid4().hex[:8]
     db.execute(
@@ -495,10 +495,10 @@ def create_order(body: dict = None, uid: int = Depends(get_current_user)):
          1 if body.get('urgent') else 0, 1 if body.get('showPhone') else 0,
          str(body.get('phone', '') or ''), str(body['datetime']), uid, now_ms(), 'open',
          str(body.get('city', '') or '').strip()))
-    notify(uid, 'Заказ опубликован: «' + str(body['title']).strip() + '»')
+    notify(uid, 'Р—Р°РєР°Р· РѕРїСѓР±Р»РёРєРѕРІР°РЅ: В«' + str(body['title']).strip() + 'В»')
     city = str(body.get('city', '') or '').strip()
-    post_to_channel('🆕 Новый заказ\n\n«' + str(body['title']).strip() + '»\n📦 ' + str(body['type']) +
-                    '\n🏙 ' + (city or '—') + '\n💰 ' + str(body['price']) + ' ₽\n🕐 ' +
+    post_to_channel('рџ†• РќРѕРІС‹Р№ Р·Р°РєР°Р·\n\nВ«' + str(body['title']).strip() + 'В»\nрџ“¦ ' + str(body['type']) +
+                    '\nрџЏ™ ' + (city or 'вЂ”') + '\nрџ’° ' + str(body['price']) + ' в‚Ѕ\nрџ•ђ ' +
                     str(body['datetime']).replace('T', ' '), order_id)
     try:
         notify_subscribers({'id': order_id, 'author_id': uid, 'title': str(body['title']).strip(),
@@ -512,22 +512,22 @@ def create_order(body: dict = None, uid: int = Depends(get_current_user)):
 def respond(order_id: str, body: dict = None, uid: int = Depends(get_current_user)):
     u = _me(uid)
     if u.get('blocked'):
-        raise HTTPException(403, 'Ваш аккаунт заблокирован модерацией')
+        raise HTTPException(403, 'Р’Р°С€ Р°РєРєР°СѓРЅС‚ Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅ РјРѕРґРµСЂР°С†РёРµР№')
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
-        raise HTTPException(404, 'Заказ не найден')
+        raise HTTPException(404, 'Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ')
     if o['status'] != 'open':
-        raise HTTPException(400, 'Заказ уже не принимает отклики')
+        raise HTTPException(400, 'Р—Р°РєР°Р· СѓР¶Рµ РЅРµ РїСЂРёРЅРёРјР°РµС‚ РѕС‚РєР»РёРєРё')
     dup = db.query('SELECT id FROM responses WHERE order_id=? AND user_id=?', (order_id, uid), one=True)
     if dup:
-        raise HTTPException(400, 'Вы уже откликнулись на этот заказ')
+        raise HTTPException(400, 'Р’С‹ СѓР¶Рµ РѕС‚РєР»РёРєРЅСѓР»РёСЃСЊ РЅР° СЌС‚РѕС‚ Р·Р°РєР°Р·')
 
     body = body or {}
     r_id = 'r' + uuid.uuid4().hex[:8]
     db.execute('INSERT INTO responses (id, order_id, user_id, message, status, created_at) VALUES (?,?,?,?,?,?)',
                (r_id, order_id, uid, str(body.get('message', '') or ''), 'new', now_ms()))
-    notify(uid, 'Ваш отклик отправлен на «' + o['title'] + '»')
-    notify(o['author_id'], 'Новый отклик от ' + u['name'] + ' на «' + o['title'] + '»',
+    notify(uid, 'Р’Р°С€ РѕС‚РєР»РёРє РѕС‚РїСЂР°РІР»РµРЅ РЅР° В«' + o['title'] + 'В»')
+    notify(o['author_id'], 'РќРѕРІС‹Р№ РѕС‚РєР»РёРє РѕС‚ ' + u['name'] + ' РЅР° В«' + o['title'] + 'В»',
            push=True, order_id=order_id)
     return mutation_result(order_id, uid)
 
@@ -542,25 +542,25 @@ def cancel_respond(order_id: str, uid: int = Depends(get_current_user)):
 
 def _ensure_author(o, uid):
     if o['author_id'] != uid:
-        raise HTTPException(403, 'Действие доступно только заказчику')
+        raise HTTPException(403, 'Р”РµР№СЃС‚РІРёРµ РґРѕСЃС‚СѓРїРЅРѕ С‚РѕР»СЊРєРѕ Р·Р°РєР°Р·С‡РёРєСѓ')
 
 
 @app.post('/api/orders/{order_id}/assign')
 def assign(order_id: str, body: dict = None, uid: int = Depends(get_current_user)):
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
-        raise HTTPException(404, 'Заказ не найден')
+        raise HTTPException(404, 'Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ')
     _ensure_author(o, uid)
     body = body or {}
     r_id = body.get('responseId')
     r = db.query('SELECT * FROM responses WHERE id=? AND order_id=?', (r_id, order_id), one=True)
     if not r:
-        raise HTTPException(404, 'Отклик не найден')
+        raise HTTPException(404, 'РћС‚РєР»РёРє РЅРµ РЅР°Р№РґРµРЅ')
     db.execute('UPDATE responses SET status=? WHERE id=?', ('accepted', r_id))
     db.execute("UPDATE orders SET status=?, accepted_response_id=? WHERE id=?",
                ('in_progress', r_id, order_id))
     ex = db.query('SELECT * FROM users WHERE id=?', (r['user_id'],), one=True) or {}
-    notify(r['user_id'], 'Вы назначены исполнителем на «' + o['title'] + '»',
+    notify(r['user_id'], 'Р’С‹ РЅР°Р·РЅР°С‡РµРЅС‹ РёСЃРїРѕР»РЅРёС‚РµР»РµРј РЅР° В«' + o['title'] + 'В»',
            push=True, order_id=order_id)
     return mutation_result(order_id, uid)
 
@@ -569,15 +569,15 @@ def assign(order_id: str, body: dict = None, uid: int = Depends(get_current_user
 def reject(order_id: str, body: dict = None, uid: int = Depends(get_current_user)):
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
-        raise HTTPException(404, 'Заказ не найден')
+        raise HTTPException(404, 'Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ')
     _ensure_author(o, uid)
     body = body or {}
     r_id = body.get('responseId')
     r = db.query('SELECT * FROM responses WHERE id=? AND order_id=?', (r_id, order_id), one=True)
     if not r:
-        raise HTTPException(404, 'Отклик не найден')
+        raise HTTPException(404, 'РћС‚РєР»РёРє РЅРµ РЅР°Р№РґРµРЅ')
     db.execute('UPDATE responses SET status=? WHERE id=?', ('rejected', r_id))
-    notify(r['user_id'], 'Ваш отклик на «' + o['title'] + '» отклонён',
+    notify(r['user_id'], 'Р’Р°С€ РѕС‚РєР»РёРє РЅР° В«' + o['title'] + 'В» РѕС‚РєР»РѕРЅС‘РЅ',
            push=True, order_id=order_id)
     return mutation_result(order_id, uid)
 
@@ -586,20 +586,20 @@ def reject(order_id: str, body: dict = None, uid: int = Depends(get_current_user
 def complete(order_id: str, uid: int = Depends(get_current_user)):
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
-        raise HTTPException(404, 'Заказ не найден')
+        raise HTTPException(404, 'Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ')
     if o['status'] != 'in_progress':
-        raise HTTPException(400, 'Заказ нельзя завершить в текущем статусе')
+        raise HTTPException(400, 'Р—Р°РєР°Р· РЅРµР»СЊР·СЏ Р·Р°РІРµСЂС€РёС‚СЊ РІ С‚РµРєСѓС‰РµРј СЃС‚Р°С‚СѓСЃРµ')
     accepted = None
     if o['accepted_response_id']:
         accepted = db.query('SELECT * FROM responses WHERE id=? AND order_id=?',
                             (o['accepted_response_id'], order_id), one=True)
     if o['author_id'] != uid and not (accepted and accepted['user_id'] == uid):
-        raise HTTPException(403, 'Завершить заказ может только заказчик или назначенный исполнитель')
+        raise HTTPException(403, 'Р—Р°РІРµСЂС€РёС‚СЊ Р·Р°РєР°Р· РјРѕР¶РµС‚ С‚РѕР»СЊРєРѕ Р·Р°РєР°Р·С‡РёРє РёР»Рё РЅР°Р·РЅР°С‡РµРЅРЅС‹Р№ РёСЃРїРѕР»РЅРёС‚РµР»СЊ')
     db.execute('UPDATE orders SET status=? WHERE id=?', ('done', order_id))
     if accepted:
         db.execute('UPDATE responses SET status=? WHERE id=?', ('done', accepted['id']))
         other = o['author_id'] if accepted['user_id'] == uid else accepted['user_id']
-        notify(other, 'Заказ «' + o['title'] + '» завершён', push=True, order_id=order_id)
+        notify(other, 'Р—Р°РєР°Р· В«' + o['title'] + 'В» Р·Р°РІРµСЂС€С‘РЅ', push=True, order_id=order_id)
     return mutation_result(order_id, uid)
 
 
@@ -608,13 +608,13 @@ def review(order_id: str, body: dict = None, uid: int = Depends(get_current_user
     u = _me(uid)
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
-        raise HTTPException(404, 'Заказ не найден')
+        raise HTTPException(404, 'Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ')
     if o['status'] != 'done':
-        raise HTTPException(400, 'Оценить можно только завершённый заказ')
+        raise HTTPException(400, 'РћС†РµРЅРёС‚СЊ РјРѕР¶РЅРѕ С‚РѕР»СЊРєРѕ Р·Р°РІРµСЂС€С‘РЅРЅС‹Р№ Р·Р°РєР°Р·')
     body = body or {}
     rating = int(body.get('rating', 0))
     if rating < 1 or rating > 5:
-        raise HTTPException(400, 'Оценка должна быть от 1 до 5')
+        raise HTTPException(400, 'РћС†РµРЅРєР° РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РѕС‚ 1 РґРѕ 5')
 
     accepted = None
     if o['accepted_response_id']:
@@ -625,17 +625,17 @@ def review(order_id: str, body: dict = None, uid: int = Depends(get_current_user
     elif accepted and accepted['user_id'] == uid:
         target = o['author_id']
     else:
-        raise HTTPException(403, 'Вы не можете оценить этот заказ')
+        raise HTTPException(403, 'Р’С‹ РЅРµ РјРѕР¶РµС‚Рµ РѕС†РµРЅРёС‚СЊ СЌС‚РѕС‚ Р·Р°РєР°Р·')
 
     dup = db.query('SELECT id FROM reviews WHERE order_id=? AND user_id=?', (order_id, uid), one=True)
     if dup:
-        raise HTTPException(400, 'Вы уже оставили отзыв на этот заказ')
+        raise HTTPException(400, 'Р’С‹ СѓР¶Рµ РѕСЃС‚Р°РІРёР»Рё РѕС‚Р·С‹РІ РЅР° СЌС‚РѕС‚ Р·Р°РєР°Р·')
 
     text = str(body.get('text', '') or '').strip()
     db.execute('INSERT INTO reviews (order_id, user_id, target_id, name, rating, text, time) VALUES (?,?,?,?,?,?,?)',
                (order_id, uid, target, u['name'], rating, text, now_ms()))
     if target:
-        notify(target, 'Вас оценили на «' + o['title'] + '»: ' + str(rating) + '★',
+        notify(target, 'Р’Р°СЃ РѕС†РµРЅРёР»Рё РЅР° В«' + o['title'] + 'В»: ' + str(rating) + 'в…',
                push=True, order_id=order_id)
     return mutation_result(order_id, uid)
 
@@ -651,23 +651,23 @@ def read_notifications(uid: int = Depends(get_current_user)):
 
 
 # --------------------------------------------------------------------------
-# Report (жалоба на заказ) и модерация
+# Report (Р¶Р°Р»РѕР±Р° РЅР° Р·Р°РєР°Р·) Рё РјРѕРґРµСЂР°С†РёСЏ
 # --------------------------------------------------------------------------
 
 @app.post('/api/orders/{order_id}/report')
 def report_order(order_id: str, body: dict = None, uid: int = Depends(get_current_user)):
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
-        raise HTTPException(404, 'Заказ не найден')
+        raise HTTPException(404, 'Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ')
     if o['author_id'] == uid:
-        raise HTTPException(400, 'Нельзя пожаловаться на свой заказ')
+        raise HTTPException(400, 'РќРµР»СЊР·СЏ РїРѕР¶Р°Р»РѕРІР°С‚СЊСЃСЏ РЅР° СЃРІРѕР№ Р·Р°РєР°Р·')
     body = body or {}
     reason = str(body.get('reason', '') or '').strip()
     if not reason:
-        raise HTTPException(400, 'Укажите причину жалобы')
+        raise HTTPException(400, 'РЈРєР°Р¶РёС‚Рµ РїСЂРёС‡РёРЅСѓ Р¶Р°Р»РѕР±С‹')
     dup = db.query('SELECT id FROM reports WHERE order_id=? AND reporter_id=?', (order_id, uid), one=True)
     if dup:
-        raise HTTPException(400, 'Вы уже пожаловались на этот заказ')
+        raise HTTPException(400, 'Р’С‹ СѓР¶Рµ РїРѕР¶Р°Р»РѕРІР°Р»РёСЃСЊ РЅР° СЌС‚РѕС‚ Р·Р°РєР°Р·')
     db.execute('INSERT INTO reports (order_id, reporter_id, reason, comment, status, created_at) VALUES (?,?,?,?,?,?)',
                (order_id, uid, reason, str(body.get('comment', '') or ''), 'new', now_ms()))
     _on_new_report(o, reason, body.get('comment', '') or '')
@@ -675,7 +675,7 @@ def report_order(order_id: str, body: dict = None, uid: int = Depends(get_curren
 
 
 def _on_new_report(o, reason, comment):
-    """Уведомление админов и автоблокировка автора заказа после N жалоб."""
+    """РЈРІРµРґРѕРјР»РµРЅРёРµ Р°РґРјРёРЅРѕРІ Рё Р°РІС‚РѕР±Р»РѕРєРёСЂРѕРІРєР° Р°РІС‚РѕСЂР° Р·Р°РєР°Р·Р° РїРѕСЃР»Рµ N Р¶Р°Р»РѕР±."""
     target_id = o['author_id']
     target = db.query('SELECT * FROM users WHERE id=?', (target_id,), one=True) or {}
     rep = db.query('SELECT u.* FROM reports r JOIN users u ON u.id = r.reporter_id WHERE r.order_id=? ORDER BY r.created_at DESC LIMIT 1',
@@ -683,8 +683,8 @@ def _on_new_report(o, reason, comment):
     username = target.get('username') or ''
     target_str = target.get('name', '?') + (' (@' + username + ')' if username else '')
     reporter_str = rep.get('name', '?') + ((' (@' + (rep.get('username') or '') + ')') if rep.get('username') else '')
-    send_admin_notif('Новая жалоба!\nЗаказ: «{}»\nПричина: {}{}\nАвтор заказа: {}\nПожаловался: {}\nURL: {}/orders/{}'.format(
-        o['title'], reason, ('\nКомментарий: ' + comment) if comment else '', target_str, reporter_str,
+    send_admin_notif('РќРѕРІР°СЏ Р¶Р°Р»РѕР±Р°!\nР—Р°РєР°Р·: В«{}В»\nРџСЂРёС‡РёРЅР°: {}{}\nРђРІС‚РѕСЂ Р·Р°РєР°Р·Р°: {}\nРџРѕР¶Р°Р»РѕРІР°Р»СЃСЏ: {}\nURL: {}/orders/{}'.format(
+        o['title'], reason, ('\nРљРѕРјРјРµРЅС‚Р°СЂРёР№: ' + comment) if comment else '', target_str, reporter_str,
         auth.BASE_URL, o['id']))
 
     if target.get('blocked'):
@@ -694,8 +694,8 @@ def _on_new_report(o, reason, comment):
         'WHERE o2.author_id=? AND r.status=?', (target_id, 'new'), one=True)['c']
     if count >= _block_threshold():
         db.execute('UPDATE users SET blocked=1 WHERE id=?', (target_id,))
-        notify(target_id, 'Ваш аккаунт заблокирован модерацией после жалоб. Обратитесь к администратору.')
-        send_admin_notif('Аккаунт «{}» автоматически заблокирован ({} жалоб). Восстановить: панель админа.'.format(
+        notify(target_id, 'Р’Р°С€ Р°РєРєР°СѓРЅС‚ Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅ РјРѕРґРµСЂР°С†РёРµР№ РїРѕСЃР»Рµ Р¶Р°Р»РѕР±. РћР±СЂР°С‚РёС‚РµСЃСЊ Рє Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂСѓ.')
+        send_admin_notif('РђРєРєР°СѓРЅС‚ В«{}В» Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅ ({} Р¶Р°Р»РѕР±). Р’РѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ: РїР°РЅРµР»СЊ Р°РґРјРёРЅР°.'.format(
             target_str, count))
 
 
@@ -703,13 +703,13 @@ def _on_new_report(o, reason, comment):
 def delete_order(order_id: str, uid: int = Depends(get_current_user)):
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
-        raise HTTPException(404, 'Заказ не найден')
+        raise HTTPException(404, 'Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ')
     u = _me(uid)
     admin = bool(u.get('is_admin'))
     if o['author_id'] != uid and not admin:
-        raise HTTPException(403, 'Удалять может только автор заказа или администратор')
+        raise HTTPException(403, 'РЈРґР°Р»СЏС‚СЊ РјРѕР¶РµС‚ С‚РѕР»СЊРєРѕ Р°РІС‚РѕСЂ Р·Р°РєР°Р·Р° РёР»Рё Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ')
     if o['author_id'] == uid and not admin and o['status'] != 'open':
-        raise HTTPException(400, 'Нельзя удалить заказ, который уже в работе или завершён')
+        raise HTTPException(400, 'РќРµР»СЊР·СЏ СѓРґР°Р»РёС‚СЊ Р·Р°РєР°Р·, РєРѕС‚РѕСЂС‹Р№ СѓР¶Рµ РІ СЂР°Р±РѕС‚Рµ РёР»Рё Р·Р°РІРµСЂС€С‘РЅ')
     db.execute('DELETE FROM responses WHERE order_id=?', (order_id,))
     db.execute('DELETE FROM reviews WHERE order_id=?', (order_id,))
     db.execute('DELETE FROM reports WHERE order_id=?', (order_id,))
@@ -801,14 +801,14 @@ def admin_unblock_user(user_id: int, uid: int = Depends(get_current_user)):
     _ensure_admin(uid)
     u = db.query('SELECT * FROM users WHERE id=?', (user_id,), one=True)
     if not u:
-        raise HTTPException(404, 'Пользователь не найден')
+        raise HTTPException(404, 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ')
     db.execute('UPDATE users SET blocked=0 WHERE id=?', (user_id,))
-    notify(user_id, 'Ваш аккаунт восстановлен модератором. Приятной работы!')
+    notify(user_id, 'Р’Р°С€ Р°РєРєР°СѓРЅС‚ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅ РјРѕРґРµСЂР°С‚РѕСЂРѕРј. РџСЂРёСЏС‚РЅРѕР№ СЂР°Р±РѕС‚С‹!')
     return {'ok': True}
 
 
 # --------------------------------------------------------------------------
-# Платежи (Telegram Stars): продвижение заказа
+# РџР»Р°С‚РµР¶Рё (Telegram Stars): РїСЂРѕРґРІРёР¶РµРЅРёРµ Р·Р°РєР°Р·Р°
 # --------------------------------------------------------------------------
 
 def _boost_price():
@@ -821,23 +821,23 @@ def _boost_price():
 @app.post('/api/orders/{order_id}/boost_invoice')
 def boost_invoice(order_id: str, uid: int = Depends(get_current_user)):
     if not auth.BOT_TOKEN:
-        raise HTTPException(400, 'Продвижение доступно только в Telegram')
+        raise HTTPException(400, 'РџСЂРѕРґРІРёР¶РµРЅРёРµ РґРѕСЃС‚СѓРїРЅРѕ С‚РѕР»СЊРєРѕ РІ Telegram')
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
-        raise HTTPException(404, 'Заказ не найден')
+        raise HTTPException(404, 'Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ')
     if o['author_id'] != uid:
-        raise HTTPException(403, 'Поднять заказ может только его автор')
+        raise HTTPException(403, 'РџРѕРґРЅСЏС‚СЊ Р·Р°РєР°Р· РјРѕР¶РµС‚ С‚РѕР»СЊРєРѕ РµРіРѕ Р°РІС‚РѕСЂ')
     if o['status'] != 'open':
-        raise HTTPException(400, 'Продвигать можно только открытые заказы')
+        raise HTTPException(400, 'РџСЂРѕРґРІРёРіР°С‚СЊ РјРѕР¶РЅРѕ С‚РѕР»СЊРєРѕ РѕС‚РєСЂС‹С‚С‹Рµ Р·Р°РєР°Р·С‹')
     if o.get('boosted_until') and o['boosted_until'] > now_ms():
-        raise HTTPException(400, 'Заказ уже поднят — попробуйте позже')
+        raise HTTPException(400, 'Р—Р°РєР°Р· СѓР¶Рµ РїРѕРґРЅСЏС‚ вЂ” РїРѕРїСЂРѕР±СѓР№С‚Рµ РїРѕР·Р¶Рµ')
     payload = 'BOOST:' + order_id
     body = {
-        'title': 'Поднять заказ',
-        'description': 'Подъём заказа наверх ленты на 24 часа',
+        'title': 'РџРѕРґРЅСЏС‚СЊ Р·Р°РєР°Р·',
+        'description': 'РџРѕРґСЉС‘Рј Р·Р°РєР°Р·Р° РЅР°РІРµСЂС… Р»РµРЅС‚С‹ РЅР° 24 С‡Р°СЃР°',
         'payload': payload,
         'currency': 'XTR',
-        'prices': json.dumps([{'label': 'Поднять заказ', 'amount': _boost_price()}], ensure_ascii=False),
+        'prices': json.dumps([{'label': 'РџРѕРґРЅСЏС‚СЊ Р·Р°РєР°Р·', 'amount': _boost_price()}], ensure_ascii=False),
     }
     try:
         req = urllib.request.Request(
@@ -847,9 +847,9 @@ def boost_invoice(order_id: str, uid: int = Depends(get_current_user)):
         with urllib.request.urlopen(req, timeout=10) as r:
             resp = json.loads(r.read().decode('utf-8'))
     except Exception:
-        raise HTTPException(502, 'Не удалось создать инвойс, попробуйте позже')
+        raise HTTPException(502, 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РёРЅРІРѕР№СЃ, РїРѕРїСЂРѕР±СѓР№С‚Рµ РїРѕР·Р¶Рµ')
     if not resp.get('ok') or not resp.get('result'):
-        raise HTTPException(502, 'Ошибка Telegram: ' + str(resp.get('description', '')))
+        raise HTTPException(502, 'РћС€РёР±РєР° Telegram: ' + str(resp.get('description', '')))
     return {'url': resp['result']}
 
 
@@ -890,7 +890,7 @@ def _apply_star_payment(update_id, payment):
     if not o:
         return
     db.execute('UPDATE orders SET boosted_until=? WHERE id=?', (now_ms() + 86400000, order_id))
-    notify(o['author_id'], 'Заказ «' + o['title'] + '» поднят в ленте на 24 часа')
+    notify(o['author_id'], 'Р—Р°РєР°Р· В«' + o['title'] + 'В» РїРѕРґРЅСЏС‚ РІ Р»РµРЅС‚Рµ РЅР° 24 С‡Р°СЃР°')
 
 
 def _tg_poll_once():
@@ -926,16 +926,16 @@ def _tg_poll_once():
 
 
 # --------------------------------------------------------------------------
-# Бот-редактор: люди пишут в ЛС → заказ в приложении + карточка в группу
+# Р‘РѕС‚-СЂРµРґР°РєС‚РѕСЂ: Р»СЋРґРё РїРёС€СѓС‚ РІ Р›РЎ в†’ Р·Р°РєР°Р· РІ РїСЂРёР»РѕР¶РµРЅРёРё + РєР°СЂС‚РѕС‡РєР° РІ РіСЂСѓРїРїСѓ
 # --------------------------------------------------------------------------
 
 BOT_TYPES = [
-    ('gruz', 'Грузчики'),
-    ('vod', 'Водитель'),
-    ('pereezd', 'Переезды'),
-    ('uborka', 'Уборка'),
-    ('raznorab', 'Разнорабочий'),
-    ('drug', 'Другое'),
+    ('gruz', 'Р“СЂСѓР·С‡РёРєРё'),
+    ('vod', 'Р’РѕРґРёС‚РµР»СЊ'),
+    ('pereezd', 'РџРµСЂРµРµР·РґС‹'),
+    ('uborka', 'РЈР±РѕСЂРєР°'),
+    ('raznorab', 'Р Р°Р·РЅРѕСЂР°Р±РѕС‡РёР№'),
+    ('drug', 'Р”СЂСѓРіРѕРµ'),
 ]
 BOT_TYPE_LABEL = {k: lbl for k, lbl in BOT_TYPES}
 
@@ -966,7 +966,7 @@ def _bot_user_by_tg(tg_id, first_name, username):
     try:
         new_id = db.execute(
             'INSERT INTO users (tg_id, name, username, role, skills, created_at, last_login) VALUES (?,?,?,?,?,?,?)',
-            (uid, (first_name or '').strip() or 'Пользователь', username or '', 'both', '[]', now_ms(), now_ms()))
+            (uid, (first_name or '').strip() or 'РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ', username or '', 'both', '[]', now_ms(), now_ms()))
         return db.query('SELECT * FROM users WHERE id=?', (new_id,), one=True)
     except Exception:
         return db.query('SELECT * FROM users WHERE tg_id=?', (uid,), one=True)
@@ -978,15 +978,15 @@ def _bot_welcome(chat_id):
             db.execute('DELETE FROM kv WHERE k=?', ('bot_pend_' + str(chat_id),))
         except Exception:
             pass
-        markup = {'inline_keyboard': [[{'text': 'Открыть приложение',
+        markup = {'inline_keyboard': [[{'text': 'РћС‚РєСЂС‹С‚СЊ РїСЂРёР»РѕР¶РµРЅРёРµ',
                                         'url': (auth.BASE_URL or '').rstrip('/') + '/'}]]}
         _tg_call('sendMessage', {
             'chat_id': chat_id,
-            'text': 'Привет! Я бот «Подработка 24» 🤝\n\n'
-                    'Напишите сообщением вашу вакансию или подработку, например:\n\n'
-                    '«Нужен грузчик на 4 часа»\n\n'
-                    'Дальше я задам пару вопросов (тип, цена, город) и опубликую заявку '
-                    'в группе и в приложении.',
+            'text': 'РџСЂРёРІРµС‚! РЇ Р±РѕС‚ В«РџРѕРґСЂР°Р±РѕС‚РєР° 24В» рџ¤ќ\n\n'
+                    'РќР°РїРёС€РёС‚Рµ СЃРѕРѕР±С‰РµРЅРёРµРј РІР°С€Сѓ РІР°РєР°РЅСЃРёСЋ РёР»Рё РїРѕРґСЂР°Р±РѕС‚РєСѓ, РЅР°РїСЂРёРјРµСЂ:\n\n'
+                    'В«РќСѓР¶РµРЅ РіСЂСѓР·С‡РёРє РЅР° 4 С‡Р°СЃР°В»\n\n'
+                    'Р”Р°Р»СЊС€Рµ СЏ Р·Р°РґР°Рј РїР°СЂСѓ РІРѕРїСЂРѕСЃРѕРІ (С‚РёРї, С†РµРЅР°, РіРѕСЂРѕРґ) Рё РѕРїСѓР±Р»РёРєСѓСЋ Р·Р°СЏРІРєСѓ '
+                    'РІ РіСЂСѓРїРїРµ Рё РІ РїСЂРёР»РѕР¶РµРЅРёРё.',
             'reply_markup': json.dumps(markup)})
     except Exception:
         pass
@@ -1012,7 +1012,7 @@ def _bot_ask_type(chat_id):
         kb.append([{'text': lbl, 'callback_data': 'p24vt_' + k} for k, lbl in BOT_TYPES[i:i + 2]])
     try:
         _tg_call('sendMessage', {'chat_id': chat_id,
-                                 'text': '👌 Принято! Теперь заполним заявку.\n\nШаг 1 из 3 — тип работы:',
+                                 'text': 'рџ‘Њ РџСЂРёРЅСЏС‚Рѕ! РўРµРїРµСЂСЊ Р·Р°РїРѕР»РЅРёРј Р·Р°СЏРІРєСѓ.\n\nРЁР°Рі 1 РёР· 3 вЂ” С‚РёРї СЂР°Р±РѕС‚С‹:',
                                  'reply_markup': json.dumps({'inline_keyboard': kb})})
     except Exception:
         pass
@@ -1021,9 +1021,9 @@ def _bot_ask_type(chat_id):
 def _bot_ask_price(chat_id):
     try:
         _tg_call('sendMessage', {'chat_id': chat_id,
-                                 'text': '💰 Шаг 2 из 3 — сколько платите?\n\n'
-                                         'Напишите сумму числом, например: 2500\n'
-                                         'Или отправьте «договорная», если цена не фиксирована.'})
+                                 'text': 'рџ’° РЁР°Рі 2 РёР· 3 вЂ” СЃРєРѕР»СЊРєРѕ РїР»Р°С‚РёС‚Рµ?\n\n'
+                                         'РќР°РїРёС€РёС‚Рµ СЃСѓРјРјСѓ С‡РёСЃР»РѕРј, РЅР°РїСЂРёРјРµСЂ: 2500\n'
+                                         'РР»Рё РѕС‚РїСЂР°РІСЊС‚Рµ В«РґРѕРіРѕРІРѕСЂРЅР°СЏВ», РµСЃР»Рё С†РµРЅР° РЅРµ С„РёРєСЃРёСЂРѕРІР°РЅР°.'})
     except Exception:
         pass
 
@@ -1031,28 +1031,28 @@ def _bot_ask_price(chat_id):
 def _bot_ask_city(chat_id):
     try:
         _tg_call('sendMessage', {'chat_id': chat_id,
-                                 'text': '🏙 Шаг 3 из 3 — в каком городе?',
+                                 'text': 'рџЏ™ РЁР°Рі 3 РёР· 3 вЂ” РІ РєР°РєРѕРј РіРѕСЂРѕРґРµ?',
                                  'reply_markup': json.dumps({
-                                     'inline_keyboard': [[{'text': 'Пропустить', 'callback_data': 'p24city_skip'}]]})})
+                                     'inline_keyboard': [[{'text': 'РџСЂРѕРїСѓСЃС‚РёС‚СЊ', 'callback_data': 'p24city_skip'}]]})})
     except Exception:
         pass
 
 
 def _bot_show_confirm(chat_id, pend):
     price = int(pend.get('price') or 0)
-    price_txt = str(price) + ' ₽' if price else 'договорная'
+    price_txt = str(price) + ' в‚Ѕ' if price else 'РґРѕРіРѕРІРѕСЂРЅР°СЏ'
     city = (pend.get('city') or '').strip()
-    text = ('📝 Проверьте заявку:\n\n'
-            '«' + pend['title'] + '»\n'
-            '📦 ' + pend['type'] + '\n'
-            '💰 ' + price_txt + '\n'
-            '🏙 ' + (city or '—') + '\n\n'
-            'Всё верно?')
+    text = ('рџ“ќ РџСЂРѕРІРµСЂСЊС‚Рµ Р·Р°СЏРІРєСѓ:\n\n'
+            'В«' + pend['title'] + 'В»\n'
+            'рџ“¦ ' + pend['type'] + '\n'
+            'рџ’° ' + price_txt + '\n'
+            'рџЏ™ ' + (city or 'вЂ”') + '\n\n'
+            'Р’СЃС‘ РІРµСЂРЅРѕ?')
     try:
         _tg_call('sendMessage', {'chat_id': chat_id, 'text': text, 'reply_markup': json.dumps({
             'inline_keyboard': [
-                [{'text': '✅ Опубликовать', 'callback_data': 'p24pub_yes'}],
-                [{'text': '✏️ Заполнить заново', 'callback_data': 'p24pub_reset'}],
+                [{'text': 'вњ… РћРїСѓР±Р»РёРєРѕРІР°С‚СЊ', 'callback_data': 'p24pub_yes'}],
+                [{'text': 'вњЏпёЏ Р—Р°РїРѕР»РЅРёС‚СЊ Р·Р°РЅРѕРІРѕ', 'callback_data': 'p24pub_reset'}],
             ]})})
     except Exception:
         pass
@@ -1060,7 +1060,7 @@ def _bot_show_confirm(chat_id, pend):
 
 def _parse_price(text):
     t = (text or '').strip().lower()
-    if not t or t in ('договорная', 'договорную', 'по договорённости', 'не знаю', 'без оплаты', '-'):
+    if not t or t in ('РґРѕРіРѕРІРѕСЂРЅР°СЏ', 'РґРѕРіРѕРІРѕСЂРЅСѓСЋ', 'РїРѕ РґРѕРіРѕРІРѕСЂС‘РЅРЅРѕСЃС‚Рё', 'РЅРµ Р·РЅР°СЋ', 'Р±РµР· РѕРїР»Р°С‚С‹', '-'):
         return 0
     m = re.search(r'\d[\d\s]{0,8}', t)
     if not m:
@@ -1108,8 +1108,8 @@ def _bot_handle_message(msg):
 
 def _publish_order(chat_id, pend):
     order_id = 'o_' + uuid.uuid4().hex[:8]
-    title = (pend.get('title') or '').strip()[:300] or 'Без названия'
-    otype = pend.get('type') or 'Другое'
+    title = (pend.get('title') or '').strip()[:300] or 'Р‘РµР· РЅР°Р·РІР°РЅРёСЏ'
+    otype = pend.get('type') or 'Р”СЂСѓРіРѕРµ'
     price = int(pend.get('price') or 0)
     city = (pend.get('city') or '').strip()
     dt = time.strftime('%Y-%m-%dT%H:%M')
@@ -1124,19 +1124,19 @@ def _publish_order(chat_id, pend):
         db.execute('DELETE FROM kv WHERE k=?', ('bot_pend_' + str(chat_id),))
     except Exception:
         pass
-    price_txt = str(price) + ' ₽' if price else 'договорная'
-    text = '🆕 Новый заказ\n\n«' + title + '»\n📦 ' + otype + '\n💰 ' + price_txt
+    price_txt = str(price) + ' в‚Ѕ' if price else 'РґРѕРіРѕРІРѕСЂРЅР°СЏ'
+    text = 'рџ†• РќРѕРІС‹Р№ Р·Р°РєР°Р·\n\nВ«' + title + 'В»\nрџ“¦ ' + otype + '\nрџ’° ' + price_txt
     if city:
-        text += '\n🏙 ' + city
-    text += '\n🕐 ' + dt.replace('T', ' ')
+        text += '\nрџЏ™ ' + city
+    text += '\nрџ•ђ ' + dt.replace('T', ' ')
     app_url = (auth.BASE_URL or '').rstrip('/') + '/?startapp=' + order_id
     mid = post_to_channel(text, buttons=[
-        [{'text': 'Открыть в приложении', 'url': app_url}],
+        [{'text': 'РћС‚РєСЂС‹С‚СЊ РІ РїСЂРёР»РѕР¶РµРЅРёРё', 'url': app_url}],
     ])
     if mid:
         _kv_set('bot_msg_' + order_id, json.dumps({'msg_id': mid, 'text': text}))
     try:
-        notify(pend['user_id'], 'Заказ опубликован: «' + title + '»')
+        notify(pend['user_id'], 'Р—Р°РєР°Р· РѕРїСѓР±Р»РёРєРѕРІР°РЅ: В«' + title + 'В»')
     except Exception:
         pass
     try:
@@ -1151,13 +1151,13 @@ def _bot_close_order(cqid, chat_id, msg_id, tg_id, order_id):
     o = db.query('SELECT * FROM orders WHERE id=?', (order_id,), one=True)
     if not o:
         try:
-            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Заказ не найден'})
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ'})
         except Exception:
             pass
         return
     if o.get('status') != 'open':
         try:
-            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Вакансия уже закрыта'})
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Р’Р°РєР°РЅСЃРёСЏ СѓР¶Рµ Р·Р°РєСЂС‹С‚Р°'})
         except Exception:
             pass
         return
@@ -1165,16 +1165,16 @@ def _bot_close_order(cqid, chat_id, msg_id, tg_id, order_id):
     if not author or str(author.get('tg_id') or '') != str(tg_id):
         try:
             _tg_call('answerCallbackQuery', {'callback_query_id': cqid,
-                                             'text': 'Закрыть может только автор заказа'})
+                                             'text': 'Р—Р°РєСЂС‹С‚СЊ РјРѕР¶РµС‚ С‚РѕР»СЊРєРѕ Р°РІС‚РѕСЂ Р·Р°РєР°Р·Р°'})
         except Exception:
             pass
         return
     db.execute("UPDATE orders SET status='done' WHERE id=?", (order_id,))
     try:
-        _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': '✅ Вакансия закрыта'})
+        _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'вњ… Р’Р°РєР°РЅСЃРёСЏ Р·Р°РєСЂС‹С‚Р°'})
         if chat_id and msg_id:
             _tg_call('editMessageText', {'chat_id': chat_id, 'message_id': msg_id,
-                                         'text': '✅ Вакансия закрыта',
+                                         'text': 'вњ… Р’Р°РєР°РЅСЃРёСЏ Р·Р°РєСЂС‹С‚Р°',
                                          'reply_markup': json.dumps({'inline_keyboard': []})})
     except Exception:
         pass
@@ -1184,12 +1184,12 @@ def _bot_close_order(cqid, chat_id, msg_id, tg_id, order_id):
             info = json.loads(info_s)
             group = os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
             _tg_call('editMessageText', {'chat_id': group, 'message_id': info['msg_id'],
-                                         'text': info['text'] + '\n\n✅ Вакансия закрыта',
+                                         'text': info['text'] + '\n\nвњ… Р’Р°РєР°РЅСЃРёСЏ Р·Р°РєСЂС‹С‚Р°',
                                          'reply_markup': json.dumps({'inline_keyboard': []})})
         except Exception:
             pass
     try:
-        notify(o['author_id'], 'Ваша вакансия «' + str(o.get('title') or '') + '» закрыта')
+        notify(o['author_id'], 'Р’Р°С€Р° РІР°РєР°РЅСЃРёСЏ В«' + str(o.get('title') or '') + 'В» Р·Р°РєСЂС‹С‚Р°')
     except Exception:
         pass
 
@@ -1210,7 +1210,7 @@ def _bot_handle_callback(cb):
         if not label or not pend or pend.get('step') != 'type':
             try:
                 _tg_call('answerCallbackQuery', {'callback_query_id': cqid,
-                                                 'text': 'Срок действия истёк — напишите сообщение заново'})
+                                                 'text': 'РЎСЂРѕРє РґРµР№СЃС‚РІРёСЏ РёСЃС‚С‘Рє вЂ” РЅР°РїРёС€РёС‚Рµ СЃРѕРѕР±С‰РµРЅРёРµ Р·Р°РЅРѕРІРѕ'})
             except Exception:
                 pass
             return
@@ -1230,7 +1230,7 @@ def _bot_handle_callback(cb):
         pend['step'] = 'confirm'
         _bot_save_pend(chat_id, pend)
         try:
-            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Пропущено'})
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'РџСЂРѕРїСѓС‰РµРЅРѕ'})
         except Exception:
             pass
         _bot_show_confirm(chat_id, pend)
@@ -1241,7 +1241,7 @@ def _bot_handle_callback(cb):
             pend['type'] = ''
             _bot_save_pend(chat_id, pend)
         try:
-            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Начнём заново'})
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'РќР°С‡РЅС‘Рј Р·Р°РЅРѕРІРѕ'})
         except Exception:
             pass
         _bot_ask_type(chat_id)
@@ -1249,7 +1249,7 @@ def _bot_handle_callback(cb):
         pend = _bot_get_pend(chat_id)
         if not pend or pend.get('step') != 'confirm':
             try:
-                _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Срок действия истёк'})
+                _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'РЎСЂРѕРє РґРµР№СЃС‚РІРёСЏ РёСЃС‚С‘Рє'})
             except Exception:
                 pass
             return
@@ -1259,14 +1259,14 @@ def _bot_handle_callback(cb):
         order_id, title, otype, price_txt = res
         app_url = (auth.BASE_URL or '').rstrip('/') + '/?startapp=' + order_id
         try:
-            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': '✅ Опубликовано'})
+            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'вњ… РћРїСѓР±Р»РёРєРѕРІР°РЅРѕ'})
             _tg_call('editMessageText', {'chat_id': chat_id, 'message_id': msg_id,
-                                         'text': '✅ Заказ опубликован в группе и в приложении!\n\n'
-                                                 '«' + title + '»\n📦 ' + otype + '\n💰 ' + price_txt +
-                                                 '\n\nЗакрыть вакансию можно кнопкой ниже.',
+                                         'text': 'вњ… Р—Р°РєР°Р· РѕРїСѓР±Р»РёРєРѕРІР°РЅ РІ РіСЂСѓРїРїРµ Рё РІ РїСЂРёР»РѕР¶РµРЅРёРё!\n\n'
+                                                 'В«' + title + 'В»\nрџ“¦ ' + otype + '\nрџ’° ' + price_txt +
+                                                 '\n\nР—Р°РєСЂС‹С‚СЊ РІР°РєР°РЅСЃРёСЋ РјРѕР¶РЅРѕ РєРЅРѕРїРєРѕР№ РЅРёР¶Рµ.',
                                          'reply_markup': json.dumps({'inline_keyboard': [
-                                             [{'text': 'Вакансия закрыта', 'callback_data': 'p24close_' + order_id}],
-                                             [{'text': 'Открыть в приложении', 'url': app_url}],
+                                             [{'text': 'Р’Р°РєР°РЅСЃРёСЏ Р·Р°РєСЂС‹С‚Р°', 'callback_data': 'p24close_' + order_id}],
+                                             [{'text': 'РћС‚РєСЂС‹С‚СЊ РІ РїСЂРёР»РѕР¶РµРЅРёРё', 'url': app_url}],
                                          ]})})
         except Exception:
             pass
@@ -1275,7 +1275,7 @@ def _bot_handle_callback(cb):
 
 
 def pin_group_welcome():
-    """Разово постит в группу-витрину: приветствие (пин) + кнопку «Подать заявку»."""
+    """Р Р°Р·РѕРІРѕ РїРѕСЃС‚РёС‚ РІ РіСЂСѓРїРїСѓ-РІРёС‚СЂРёРЅСѓ: РїСЂРёРІРµС‚СЃС‚РІРёРµ (РїРёРЅ) + РєРЅРѕРїРєСѓ В«РџРѕРґР°С‚СЊ Р·Р°СЏРІРєСѓВ»."""
     if not auth.BOT_TOKEN or not auth.BASE_URL:
         return
     group = os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
@@ -1284,9 +1284,9 @@ def pin_group_welcome():
         if not done:
             try:
                 payload = {'chat_id': group,
-                           'text': '👋 Добро пожаловать в «Подработка 24»!\n\nЗдесь автоматически появляются свежие заказы. Открыть приложение:',
+                           'text': 'рџ‘‹ Р”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РІ В«РџРѕРґСЂР°Р±РѕС‚РєР° 24В»!\n\nР—РґРµСЃСЊ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїРѕСЏРІР»СЏСЋС‚СЃСЏ СЃРІРµР¶РёРµ Р·Р°РєР°Р·С‹. РћС‚РєСЂС‹С‚СЊ РїСЂРёР»РѕР¶РµРЅРёРµ:',
                            'reply_markup': json.dumps({
-                               'inline_keyboard': [[{'text': 'Открыть приложение', 'url': auth.BASE_URL.rstrip('/') + '/'}]]
+                               'inline_keyboard': [[{'text': 'РћС‚РєСЂС‹С‚СЊ РїСЂРёР»РѕР¶РµРЅРёРµ', 'url': auth.BASE_URL.rstrip('/') + '/'}]]
                            })}
                 req = urllib.request.Request(
                     'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
@@ -1307,14 +1307,14 @@ def pin_group_welcome():
                 pass
             db.execute("INSERT INTO kv (k, v) VALUES ('group_welcome', '1')")
         bot_username = auth.get_bot_username() or None
-        inv = db.query("SELECT v FROM kv WHERE k='group_invite'", one=True)
+        inv = db.query("SELECT v FROM kv WHERE k='group_invite_v2'", one=True)
         if not inv and bot_username:
             try:
                 payload = {'chat_id': group,
-                           'text': '💼 Хотите разместить вакансию или подработку?\n\nНапишите боту — мы опубликуем её в группе и в приложении:',
+                           'text': 'рџ’ј РҐРѕС‚РёС‚Рµ СЂР°Р·РјРµСЃС‚РёС‚СЊ РІР°РєР°РЅСЃРёСЋ РёР»Рё РїРѕРґСЂР°Р±РѕС‚РєСѓ?\n\nРџСЂРѕСЃС‚Рѕ РѕС‚РєСЂРѕР№С‚Рµ РїСЂРёР»РѕР¶РµРЅРёРµ РїРѕ РєРЅРѕРїРєРµ В«РџРѕРґСЂР°Р±РѕС‚РєР° 24В», СЂР°Р·РјРµСЃС‚РёС‚Рµ РІР°РєР°РЅСЃРёСЋ вЂ” Рё РјС‹ СЃСЂР°Р·Сѓ РѕРїСѓР±Р»РёРєСѓРµРј РµС‘ РІ РіСЂСѓРїРїРµ.',
                            'reply_markup': json.dumps({
-                               'inline_keyboard': [[{'text': '✍️ Подать заявку',
-                                                     'url': 'https://t.me/' + bot_username}]]
+                               'inline_keyboard': [[{'text': 'РџРѕРґСЂР°Р±РѕС‚РєР° 24',
+                                                     'url': (auth.BASE_URL or '').rstrip('/') + '/'}]]
                            })}
                 req = urllib.request.Request(
                     'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
@@ -1323,7 +1323,7 @@ def pin_group_welcome():
                 urllib.request.urlopen(req, timeout=8)
             except Exception:
                 pass
-            db.execute("INSERT INTO kv (k, v) VALUES ('group_invite', '1')")
+            db.execute("INSERT INTO kv (k, v) VALUES ('group_invite_v2', '1')")
     except Exception:
         pass
 
