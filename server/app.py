@@ -63,6 +63,27 @@ def tg_push(user_id, text, order_id=None):
         pass
 
 
+def post_to_channel(text, order_id=None):
+    """Публикует пост в канал-витрину заказов (CHANNEL_ID), если бот — админ канала."""
+    if not auth.BOT_TOKEN:
+        return
+    channel = os.environ.get('CHANNEL_ID', '').strip() or '@podrabotka_orders'
+    payload = {'chat_id': channel, 'text': text}
+    if order_id and auth.BASE_URL:
+        app_url = auth.BASE_URL.rstrip('/') + '/?startapp=o_' + order_id
+        payload['reply_markup'] = json.dumps({
+            'inline_keyboard': [[{'text': 'Открыть заказ', 'web_app': {'url': app_url}}]]
+        })
+    try:
+        req = urllib.request.Request(
+            'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
+            data=urllib.parse.urlencode(payload).encode(),
+            headers={'Content-Type': 'application/x-www-form-urlencoded'})
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass
+
+
 def get_current_user(authorization: str = Header(None)):
     if not authorization or not authorization.startswith('Bearer '):
         raise HTTPException(401, 'Требуется авторизация')
@@ -364,6 +385,10 @@ def create_order(body: dict = None, uid: int = Depends(get_current_user)):
          str(body.get('phone', '') or ''), str(body['datetime']), uid, now_ms(), 'open',
          str(body.get('city', '') or '').strip()))
     notify(uid, 'Заказ опубликован: «' + str(body['title']).strip() + '»')
+    city = str(body.get('city', '') or '').strip()
+    post_to_channel('🆕 Новый заказ\n\n«' + str(body['title']).strip() + '»\n📦 ' + str(body['type']) +
+                    '\n🏙 ' + (city or '—') + '\n💰 ' + str(body['price']) + ' ₽\n🕐 ' +
+                    str(body['datetime']).replace('T', ' '), order_id)
     return mutation_result(order_id, uid)
 
 
