@@ -319,6 +319,33 @@ def api_auth(body: dict = None):
     return {'token': token, 'user': user_payload(row)}
 
 
+@app.get('/api/test_channel')
+def test_channel():
+    """Диагностика канала-витрины: показывает, какой чат видит бот и что отвечает Telegram."""
+    if not auth.BOT_TOKEN:
+        return {'ok': False, 'reason': 'BOT_TOKEN не задан'}
+    channel = os.environ.get('CHANNEL_ID', '').strip() or '@podrabotka_orders'
+    result = {'chat': None, 'send': None}
+    try:
+        req = urllib.request.Request(
+            'https://api.telegram.org/bot{}/getChat'.format(auth.BOT_TOKEN) + '?' + urllib.parse.urlencode({'chat_id': channel}))
+        with urllib.request.urlopen(req, timeout=10) as r:
+            result['chat'] = json.loads(r.read().decode('utf-8'))
+    except Exception as e:
+        result['chat'] = {'ok': False, 'reason': str(e)[:300]}
+    try:
+        payload = {'chat_id': channel, 'text': '🔧 Тест канала-витрины из диагностики'}
+        req = urllib.request.Request(
+            'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
+            data=urllib.parse.urlencode(payload).encode(),
+            headers={'Content-Type': 'application/x-www-form-urlencoded'})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            result['send'] = json.loads(r.read().decode('utf-8'))
+    except Exception as e:
+        result['send'] = {'ok': False, 'reason': str(e)[:300]}
+    return result
+
+
 @app.get('/api/health')
 def health():
     # Лёгкий запрос к БД, чтобы внешний пингер держал активными и Render, и базу (Neon)
