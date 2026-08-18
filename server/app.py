@@ -92,12 +92,15 @@ def _notify_admin_fail(text):
         admins = auth.ADMIN_TG_IDS
     except Exception:
         admins = []
-    if not admins:
+    if not admins or not auth.BOT_TOKEN:
         return
     try:
-        u = db.query('SELECT id FROM users WHERE tg_id=?', (admins[0],), one=True)
-        if u:
-            tg_push(u['id'], text)
+        payload = {'chat_id': admins[0], 'text': text}
+        req = urllib.request.Request(
+            'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
+            data=urllib.parse.urlencode(payload).encode(),
+            headers={'Content-Type': 'application/x-www-form-urlencoded'})
+        urllib.request.urlopen(req, timeout=5)
     except Exception:
         pass
 
