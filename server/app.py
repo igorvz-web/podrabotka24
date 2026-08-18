@@ -826,6 +826,43 @@ def _stars_poll_once():
             pass
 
 
+def pin_group_welcome():
+    """Разово постит и закрепляет в группе-витрине сообщение с кнопкой приложения."""
+    if not auth.BOT_TOKEN or not auth.BASE_URL:
+        return
+    group = os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
+    try:
+        done = db.query("SELECT v FROM kv WHERE k='group_welcome'", one=True)
+        if done:
+            return
+        try:
+            payload = {'chat_id': group,
+                       'text': '👋 Добро пожаловать в «Подработка 24»!\n\nЗдесь автоматически появляются свежие заказы. Открыть приложение:',
+                       'reply_markup': json.dumps({
+                           'inline_keyboard': [[{'text': 'Открыть приложение', 'url': auth.BASE_URL.rstrip('/') + '/'}]]
+                       })}
+            req = urllib.request.Request(
+                'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
+                data=urllib.parse.urlencode(payload).encode(),
+                headers={'Content-Type': 'application/x-www-form-urlencoded'})
+            with urllib.request.urlopen(req, timeout=8) as r:
+                resp = json.loads(r.read().decode('utf-8'))
+            msg_id = resp.get('result', {}).get('message_id')
+            if msg_id:
+                try:
+                    pin = urllib.request.Request(
+                        'https://api.telegram.org/bot{}/pinChatMessage'.format(auth.BOT_TOKEN) + '?' +
+                        urllib.parse.urlencode({'chat_id': group, 'message_id': msg_id, 'disable_notification': 'true'}))
+                    urllib.request.urlopen(pin, timeout=8)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        db.execute("INSERT INTO kv (k, v) VALUES ('group_welcome', '1')")
+    except Exception:
+        pass
+
+
 def _stars_loop():
     while True:
         try:
@@ -837,6 +874,7 @@ def _stars_loop():
 
 _stars_init_offset()
 threading.Thread(target=_stars_loop, daemon=True).start()
+threading.Thread(target=pin_group_welcome, daemon=True).start()
 
 
 # --------------------------------------------------------------------------
