@@ -322,10 +322,10 @@ def api_auth(body: dict = None):
 @app.get('/api/test_channel')
 def test_channel():
     """Диагностика канала-витрины: показывает, какой чат видит бот и что отвечает Telegram."""
-    if not auth.BOT_TOKEN:
-        return {'ok': False, 'reason': 'BOT_TOKEN не задан'}
+    result = {'base_url': auth.BASE_URL, 'bot_token_set': bool(auth.BOT_TOKEN), 'chat': None, 'send': None, 'send_with_button': None}
     channel = os.environ.get('CHANNEL_ID', '').strip() or '@podrabotka_orders'
-    result = {'chat': None, 'send': None}
+    if not auth.BOT_TOKEN:
+        return result
     try:
         req = urllib.request.Request(
             'https://api.telegram.org/bot{}/getChat'.format(auth.BOT_TOKEN) + '?' + urllib.parse.urlencode({'chat_id': channel}))
@@ -343,6 +343,23 @@ def test_channel():
             result['send'] = json.loads(r.read().decode('utf-8'))
     except Exception as e:
         result['send'] = {'ok': False, 'reason': str(e)[:300]}
+    if auth.BASE_URL:
+        app_url = auth.BASE_URL.rstrip('/') + '/?startapp=o_1'
+        try:
+            payload = {'chat_id': channel, 'text': '🔘 Тест с кнопкой «Открыть заказ»',
+                       'reply_markup': json.dumps({
+                           'inline_keyboard': [[{'text': 'Открыть заказ', 'web_app': {'url': app_url}}]]
+                       })}
+            req = urllib.request.Request(
+                'https://api.telegram.org/bot{}/sendMessage'.format(auth.BOT_TOKEN),
+                data=urllib.parse.urlencode(payload).encode(),
+                headers={'Content-Type': 'application/x-www-form-urlencoded'})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                result['send_with_button'] = json.loads(r.read().decode('utf-8'))
+        except Exception as e:
+            result['send_with_button'] = {'ok': False, 'reason': str(e)[:300]}
+    else:
+        result['send_with_button'] = {'ok': False, 'reason': 'BASE_URL не задан — кнопка не добавляется'}
     return result
 
 
