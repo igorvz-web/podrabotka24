@@ -72,7 +72,7 @@ def post_to_channel(text, order_id=None):
     if order_id and auth.BASE_URL:
         app_url = auth.BASE_URL.rstrip('/') + '/?startapp=o_' + order_id
         payload['reply_markup'] = json.dumps({
-            'inline_keyboard': [[{'text': 'Открыть заказ', 'web_app': {'url': app_url}}]]
+            'inline_keyboard': [[{'text': 'Открыть заказ', 'url': app_url}]]
         })
     try:
         req = urllib.request.Request(
