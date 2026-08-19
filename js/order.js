@@ -529,7 +529,7 @@
           U.el('div', { class: 'order-top' }, [U.el('span', { class: 'badge', text: o.type })]),
           U.el('div', { class: 'order-title', text: o.title }),
           U.el('div', { class: 'order-foot' }, [
-            U.el('div', { class: 'price', html: o.price ? (U.esc(o.price.toLocaleString('ru-RU')) + ' <span class="cur">₽</span>') : 'договорная' }),
+            U.el('div', { class: 'price', text: U.fmtPrice(o.price) }),
             U.el('span', { class: 'responses-count' }, [U.iconEl('users'), U.el('span', { text: o.responses.length })])
           ])
         ]));

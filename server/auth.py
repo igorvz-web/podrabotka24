@@ -95,17 +95,30 @@ def verify_init_data(init_data):
     return _parse_user(init_data)
 
 
+TOKEN_TTL = 30 * 86400  # сессия живёт 30 дней
+
+
 def create_token(user_id):
     token = secrets.token_hex(24)
     db.execute('INSERT INTO tokens (token, user_id, created_at) VALUES (?,?,?)',
                (token, user_id, int(time.time())))
+    try:
+        db.execute('DELETE FROM tokens WHERE created_at < ?', (int(time.time()) - TOKEN_TTL,))
+    except Exception:
+        pass
     return token
 
 
 def user_from_token(token):
     if not token:
         return None
-    row = db.query('SELECT user_id FROM tokens WHERE token=?', (token,), one=True)
+    row = db.query('SELECT token, user_id, created_at FROM tokens WHERE token=?', (token,), one=True)
     if not row:
         return None
+    try:
+        if int(row['created_at']) < int(time.time()) - TOKEN_TTL:
+            db.execute('DELETE FROM tokens WHERE token=?', (token,))
+            return None
+    except Exception:
+        pass
     return row['user_id']

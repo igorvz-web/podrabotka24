@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS reviews (
   user_id INTEGER NOT NULL,
   target_id INTEGER NOT NULL,
   name TEXT DEFAULT '',
-  rating INTEGER NOT NULL,
+  rating REAL NOT NULL,
   text TEXT DEFAULT '',
   time INTEGER
 );
@@ -168,7 +168,7 @@ CREATE TABLE IF NOT EXISTS reviews (
   user_id INTEGER NOT NULL,
   target_id INTEGER NOT NULL,
   name TEXT DEFAULT '',
-  rating INTEGER NOT NULL,
+  rating REAL NOT NULL,
   text TEXT DEFAULT '',
   time BIGINT
 );
@@ -317,3 +317,9 @@ def init_db():
         execute("ALTER TABLE orders ADD COLUMN city TEXT DEFAULT ''")
     except Exception:
         pass
+    if USE_PG:
+        # старые БД создавали reviews.rating как INTEGER — сид туда кладёт дробные рейтинги
+        try:
+            execute('ALTER TABLE reviews ALTER COLUMN rating TYPE REAL')
+        except Exception:
+            pass

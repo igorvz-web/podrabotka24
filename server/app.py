@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import threading
 import time
 import urllib.parse
@@ -64,11 +63,15 @@ def tg_push(user_id, text, order_id=None):
         pass
 
 
+def _group_id():
+    return os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
+
+
 def post_to_channel(text, order_id=None, buttons=None):
     """Публикует заказ в группу-витрину (GROUP_ID). Возвращает message_id или None."""
     if not auth.BOT_TOKEN:
         return None
-    group = os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
+    group = _group_id()
     payload = {'chat_id': group, 'text': text}
     if buttons is None:
         buttons = []
@@ -310,8 +313,11 @@ def api_auth(body: dict = None):
         tg_id = user['tg_id']
     elif auth.BOT_TOKEN and init_data:
         raise HTTPException(401, 'Неверная подпись initData')
+    elif auth.BOT_TOKEN:
+        # прод: вход только через Telegram (вне WebApp не регистрируем демо-пользователя)
+        raise HTTPException(401, 'Вход доступен только через Telegram')
     else:
-        # демо-вход (нет токена бота или приложение открыто вне Telegram)
+        # демо-вход (нет токена бота — локальная разработка)
         tg_id = '999001'
         user = {'tg_id': '999001', 'name': 'Иван Петров', 'username': 'demo_user', 'photo': ''}
 
@@ -497,9 +503,12 @@ def create_order(body: dict = None, uid: int = Depends(get_current_user)):
          str(body.get('city', '') or '').strip()))
     notify(uid, 'Заказ опубликован: «' + str(body['title']).strip() + '»')
     city = str(body.get('city', '') or '').strip()
-    post_to_channel('🆕 Новый заказ\n\n«' + str(body['title']).strip() + '»\n📦 ' + str(body['type']) +
-                    '\n🏙 ' + (city or '—') + '\n💰 ' + str(body['price']) + ' ₽\n🕐 ' +
-                    str(body['datetime']).replace('T', ' '), order_id)
+    text = ('🆕 Новый заказ\n\n«' + str(body['title']).strip() + '»\n📦 ' + str(body['type']) +
+            '\n🏙 ' + (city or '—') + '\n💰 ' + str(body['price']) + ' ₽\n🕐 ' +
+            str(body['datetime']).replace('T', ' '))
+    mid = post_to_channel(text, order_id)
+    if mid:
+        _kv_set('bot_msg_' + order_id, json.dumps({'msg_id': mid, 'text': text}))
     try:
         notify_subscribers({'id': order_id, 'author_id': uid, 'title': str(body['title']).strip(),
                             'city': city, 'type': str(body['type']), 'price': str(body['price'])})
@@ -600,6 +609,7 @@ def complete(order_id: str, uid: int = Depends(get_current_user)):
         db.execute('UPDATE responses SET status=? WHERE id=?', ('done', accepted['id']))
         other = o['author_id'] if accepted['user_id'] == uid else accepted['user_id']
         notify(other, 'Заказ «' + o['title'] + '» завершён', push=True, order_id=order_id)
+    _edit_group_card(order_id, '✅ Вакансия закрыта')
     return mutation_result(order_id, uid)
 
 
@@ -714,6 +724,11 @@ def delete_order(order_id: str, uid: int = Depends(get_current_user)):
     db.execute('DELETE FROM reviews WHERE order_id=?', (order_id,))
     db.execute('DELETE FROM reports WHERE order_id=?', (order_id,))
     db.execute('DELETE FROM orders WHERE id=?', (order_id,))
+    _edit_group_card(order_id, '🗑 Заказ удалён')
+    try:
+        db.execute('DELETE FROM kv WHERE k=?', ('bot_msg_' + order_id,))
+    except Exception:
+        pass
     return {'deleted': True}
 
 
@@ -859,6 +874,13 @@ _STARS_OFFSET = 0
 def _stars_init_offset():
     global _STARS_OFFSET
     try:
+        s = _kv_get('bot_offset')
+        if s:
+            _STARS_OFFSET = int(s)
+            return
+    except Exception:
+        pass
+    try:
         r = db.query('SELECT COALESCE(MAX(update_id),0) AS m FROM stars_updates', one=True)
         _STARS_OFFSET = int(r['m'] or 0)
     except Exception:
@@ -923,21 +945,15 @@ def _tg_poll_once():
                 _bot_handle_message(msg)
         except Exception:
             pass
+    try:
+        _kv_set('bot_offset', str(_STARS_OFFSET))
+    except Exception:
+        pass
 
 
 # --------------------------------------------------------------------------
-# Бот-редактор: люди пишут в ЛС → заказ в приложении + карточка в группу
+# Бот в ЛС: приветствие + направление в приложение (заявки сообщениями не принимаются)
 # --------------------------------------------------------------------------
-
-BOT_TYPES = [
-    ('gruz', 'Грузчики'),
-    ('vod', 'Водитель'),
-    ('pereezd', 'Переезды'),
-    ('uborka', 'Уборка'),
-    ('raznorab', 'Разнорабочий'),
-    ('drug', 'Другое'),
-]
-BOT_TYPE_LABEL = {k: lbl for k, lbl in BOT_TYPES}
 
 
 def _kv_get(key):
@@ -958,193 +974,64 @@ def _kv_set(key, val):
         pass
 
 
-def _bot_user_by_tg(tg_id, first_name, username):
-    uid = str(tg_id)
-    u = db.query('SELECT * FROM users WHERE tg_id=?', (uid,), one=True)
-    if u:
-        return u
-    try:
-        new_id = db.execute(
-            'INSERT INTO users (tg_id, name, username, role, skills, created_at, last_login) VALUES (?,?,?,?,?,?,?)',
-            (uid, (first_name or '').strip() or 'Пользователь', username or '', 'both', '[]', now_ms(), now_ms()))
-        return db.query('SELECT * FROM users WHERE id=?', (new_id,), one=True)
-    except Exception:
-        return db.query('SELECT * FROM users WHERE tg_id=?', (uid,), one=True)
-
-
 def _bot_welcome(chat_id):
     try:
-        try:
-            db.execute('DELETE FROM kv WHERE k=?', ('bot_pend_' + str(chat_id),))
-        except Exception:
-            pass
-        markup = {'inline_keyboard': [[{'text': 'Открыть приложение',
-                                        'url': (auth.BASE_URL or '').rstrip('/') + '/'}]]}
+        app_url = (auth.BASE_URL or '').rstrip('/') + '/'
+        markup = {
+            'inline_keyboard': [[{'text': 'Открыть приложение', 'url': app_url}]],
+            # reply-клавиатура с кнопкой web_app подменяет поле ввода — писать боту не требуется
+            'keyboard': [[{'text': 'Открыть приложение', 'web_app': {'url': app_url}}]],
+            'resize_keyboard': True,
+            'one_time_keyboard': True,
+        }
         _tg_call('sendMessage', {
             'chat_id': chat_id,
-            'text': 'Привет! Я бот «Подработка 24» 🤝\n\n'
-                    'Напишите сообщением вашу вакансию или подработку, например:\n\n'
-                    '«Нужен грузчик на 4 часа»\n\n'
-                    'Дальше я задам пару вопросов (тип, цена, город) и опубликую заявку '
-                    'в группе и в приложении.',
+            'text': 'Привет! Это бот «Подработка 24» 🤝\n\n'
+                    'Разместить вакансию или найти подработку можно в приложении — '
+                    'откройте его по кнопке «Открыть приложение».',
             'reply_markup': json.dumps(markup)})
     except Exception:
         pass
 
 
-def _bot_get_pend(chat_id):
-    s = _kv_get('bot_pend_' + str(chat_id))
-    if not s:
-        return None
-    try:
-        return json.loads(s)
-    except Exception:
-        return None
-
-
-def _bot_save_pend(chat_id, pend):
-    _kv_set('bot_pend_' + str(chat_id), json.dumps(pend, ensure_ascii=False))
-
-
-def _bot_ask_type(chat_id):
-    kb = []
-    for i in range(0, len(BOT_TYPES), 2):
-        kb.append([{'text': lbl, 'callback_data': 'p24vt_' + k} for k, lbl in BOT_TYPES[i:i + 2]])
-    try:
-        _tg_call('sendMessage', {'chat_id': chat_id,
-                                 'text': '👌 Принято! Теперь заполним заявку.\n\nШаг 1 из 3 — тип работы:',
-                                 'reply_markup': json.dumps({'inline_keyboard': kb})})
-    except Exception:
-        pass
-
-
-def _bot_ask_price(chat_id):
-    try:
-        _tg_call('sendMessage', {'chat_id': chat_id,
-                                 'text': '💰 Шаг 2 из 3 — сколько платите?\n\n'
-                                         'Напишите сумму числом, например: 2500\n'
-                                         'Или отправьте «договорная», если цена не фиксирована.'})
-    except Exception:
-        pass
-
-
-def _bot_ask_city(chat_id):
-    try:
-        _tg_call('sendMessage', {'chat_id': chat_id,
-                                 'text': '🏙 Шаг 3 из 3 — в каком городе?',
-                                 'reply_markup': json.dumps({
-                                     'inline_keyboard': [[{'text': 'Пропустить', 'callback_data': 'p24city_skip'}]]})})
-    except Exception:
-        pass
-
-
-def _bot_show_confirm(chat_id, pend):
-    price = int(pend.get('price') or 0)
-    price_txt = str(price) + ' ₽' if price else 'договорная'
-    city = (pend.get('city') or '').strip()
-    text = ('📝 Проверьте заявку:\n\n'
-            '«' + pend['title'] + '»\n'
-            '📦 ' + pend['type'] + '\n'
-            '💰 ' + price_txt + '\n'
-            '🏙 ' + (city or '—') + '\n\n'
-            'Всё верно?')
-    try:
-        _tg_call('sendMessage', {'chat_id': chat_id, 'text': text, 'reply_markup': json.dumps({
-            'inline_keyboard': [
-                [{'text': '✅ Опубликовать', 'callback_data': 'p24pub_yes'}],
-                [{'text': '✏️ Заполнить заново', 'callback_data': 'p24pub_reset'}],
-            ]})})
-    except Exception:
-        pass
-
-
-def _parse_price(text):
-    t = (text or '').strip().lower()
-    if not t or t in ('договорная', 'договорную', 'по договорённости', 'не знаю', 'без оплаты', '-'):
-        return 0
-    m = re.search(r'\d[\d\s]{0,8}', t)
-    if not m:
-        return 0
-    try:
-        return int(re.sub(r'\s+', '', m.group(0)))
-    except Exception:
-        return 0
-
-
 def _bot_handle_message(msg):
     if (msg.get('chat') or {}).get('type') != 'private':
         return
-    frm = msg.get('from') or {}
-    tg_id = frm.get('id')
     chat_id = (msg.get('chat') or {}).get('id')
     text = (msg.get('text') or '').strip()
-    if not tg_id or not chat_id or not text:
+    if not chat_id or not text:
         return
     if text.startswith('/start'):
         _bot_welcome(chat_id)
         return
     if text.startswith('/'):
         return
-    pend = _bot_get_pend(chat_id)
-    if pend and pend.get('step') == 'price':
-        pend['price'] = _parse_price(text)
-        pend['step'] = 'city'
-        _bot_save_pend(chat_id, pend)
-        _bot_ask_city(chat_id)
-        return
-    if pend and pend.get('step') == 'city':
-        pend['city'] = text[:60]
-        pend['step'] = 'confirm'
-        _bot_save_pend(chat_id, pend)
-        _bot_show_confirm(chat_id, pend)
-        return
-    u = _bot_user_by_tg(tg_id, frm.get('first_name') or '', frm.get('username') or '')
-    if not u:
-        return
-    _bot_save_pend(chat_id, {'user_id': u['id'], 'title': text[:300],
-                             'type': '', 'price': 0, 'city': '', 'step': 'type'})
-    _bot_ask_type(chat_id)
+    # Заявки сообщениями не принимаются — направляем в приложение
+    try:
+        _tg_call('sendMessage', {'chat_id': chat_id,
+                                 'text': 'Заявки и вакансии размещаются в приложении «Подработка 24» — '
+                                         'откройте его по кнопке ниже.',
+                                 'reply_markup': json.dumps({'inline_keyboard': [
+                                     [{'text': 'Открыть приложение',
+                                       'url': (auth.BASE_URL or '').rstrip('/') + '/'}]]})})
+    except Exception:
+        pass
 
 
-def _publish_order(chat_id, pend):
-    order_id = 'o_' + uuid.uuid4().hex[:8]
-    title = (pend.get('title') or '').strip()[:300] or 'Без названия'
-    otype = pend.get('type') or 'Другое'
-    price = int(pend.get('price') or 0)
-    city = (pend.get('city') or '').strip()
-    dt = time.strftime('%Y-%m-%dT%H:%M')
+def _edit_group_card(order_id, suffix):
+    """Правит карточку заказа в группе-витрине (если она сохранена в kv)."""
+    if not auth.BOT_TOKEN:
+        return
+    info_s = _kv_get('bot_msg_' + order_id)
+    if not info_s:
+        return
     try:
-        db.execute(
-            'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status, city) '
-            'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-            (order_id, otype, title, title, '', price, 1, 0, 0, '', dt, pend['user_id'], now_ms(), 'open', city))
-    except Exception:
-        return None
-    try:
-        db.execute('DELETE FROM kv WHERE k=?', ('bot_pend_' + str(chat_id),))
+        info = json.loads(info_s)
+        _tg_call('editMessageText', {'chat_id': _group_id(), 'message_id': info['msg_id'],
+                                     'text': str(info.get('text') or '') + '\n\n' + suffix,
+                                     'reply_markup': json.dumps({'inline_keyboard': []})})
     except Exception:
         pass
-    price_txt = str(price) + ' ₽' if price else 'договорная'
-    text = '🆕 Новый заказ\n\n«' + title + '»\n📦 ' + otype + '\n💰 ' + price_txt
-    if city:
-        text += '\n🏙 ' + city
-    text += '\n🕐 ' + dt.replace('T', ' ')
-    app_url = (auth.BASE_URL or '').rstrip('/') + '/?startapp=' + order_id
-    mid = post_to_channel(text, buttons=[
-        [{'text': 'Открыть в приложении', 'url': app_url}],
-    ])
-    if mid:
-        _kv_set('bot_msg_' + order_id, json.dumps({'msg_id': mid, 'text': text}))
-    try:
-        notify(pend['user_id'], 'Заказ опубликован: «' + title + '»')
-    except Exception:
-        pass
-    try:
-        notify_subscribers({'id': order_id, 'author_id': pend['user_id'], 'title': title,
-                            'city': city, 'type': otype, 'price': price})
-    except Exception:
-        pass
-    return order_id, title, otype, price_txt
 
 
 def _bot_close_order(cqid, chat_id, msg_id, tg_id, order_id):
@@ -1178,16 +1065,7 @@ def _bot_close_order(cqid, chat_id, msg_id, tg_id, order_id):
                                          'reply_markup': json.dumps({'inline_keyboard': []})})
     except Exception:
         pass
-    info_s = _kv_get('bot_msg_' + order_id)
-    if info_s:
-        try:
-            info = json.loads(info_s)
-            group = os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
-            _tg_call('editMessageText', {'chat_id': group, 'message_id': info['msg_id'],
-                                         'text': info['text'] + '\n\n✅ Вакансия закрыта',
-                                         'reply_markup': json.dumps({'inline_keyboard': []})})
-        except Exception:
-            pass
+    _edit_group_card(order_id, '✅ Вакансия закрыта')
     try:
         notify(o['author_id'], 'Ваша вакансия «' + str(o.get('title') or '') + '» закрыта')
     except Exception:
@@ -1204,81 +1082,15 @@ def _bot_handle_callback(cb):
     msg_id = m.get('message_id')
     if not tg_id or not cqid:
         return
-    if data.startswith('p24vt_'):
-        label = BOT_TYPE_LABEL.get(data[len('p24vt_'):])
-        pend = _bot_get_pend(chat_id)
-        if not label or not pend or pend.get('step') != 'type':
-            try:
-                _tg_call('answerCallbackQuery', {'callback_query_id': cqid,
-                                                 'text': 'Срок действия истёк — напишите сообщение заново'})
-            except Exception:
-                pass
-            return
-        pend['type'] = label
-        pend['step'] = 'price'
-        _bot_save_pend(chat_id, pend)
-        try:
-            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': label})
-        except Exception:
-            pass
-        _bot_ask_price(chat_id)
-    elif data == 'p24city_skip':
-        pend = _bot_get_pend(chat_id)
-        if not pend or pend.get('step') != 'city':
-            return
-        pend['city'] = ''
-        pend['step'] = 'confirm'
-        _bot_save_pend(chat_id, pend)
-        try:
-            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Пропущено'})
-        except Exception:
-            pass
-        _bot_show_confirm(chat_id, pend)
-    elif data == 'p24pub_reset':
-        pend = _bot_get_pend(chat_id)
-        if pend:
-            pend['step'] = 'type'
-            pend['type'] = ''
-            _bot_save_pend(chat_id, pend)
-        try:
-            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Начнём заново'})
-        except Exception:
-            pass
-        _bot_ask_type(chat_id)
-    elif data == 'p24pub_yes':
-        pend = _bot_get_pend(chat_id)
-        if not pend or pend.get('step') != 'confirm':
-            try:
-                _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Срок действия истёк'})
-            except Exception:
-                pass
-            return
-        res = _publish_order(chat_id, pend)
-        if not res:
-            return
-        order_id, title, otype, price_txt = res
-        app_url = (auth.BASE_URL or '').rstrip('/') + '/?startapp=' + order_id
-        try:
-            _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': '✅ Опубликовано'})
-            _tg_call('editMessageText', {'chat_id': chat_id, 'message_id': msg_id,
-                                         'text': '✅ Заказ опубликован в группе и в приложении!\n\n'
-                                                 '«' + title + '»\n📦 ' + otype + '\n💰 ' + price_txt +
-                                                 '\n\nЗакрыть вакансию можно кнопкой ниже.',
-                                         'reply_markup': json.dumps({'inline_keyboard': [
-                                             [{'text': 'Вакансия закрыта', 'callback_data': 'p24close_' + order_id}],
-                                             [{'text': 'Открыть в приложении', 'url': app_url}],
-                                         ]})})
-        except Exception:
-            pass
-    elif data.startswith('p24close_'):
+    if data.startswith('p24close_'):
         _bot_close_order(cqid, chat_id, msg_id, tg_id, data[len('p24close_'):])
 
 
 def pin_group_welcome():
-    """Разово постит в группу-витрину: приветствие (пин) + кнопку «Подать заявку»."""
+    """Разово постит в группу-витрину: приветствие (пин) + приглашение в приложение."""
     if not auth.BOT_TOKEN or not auth.BASE_URL:
         return
-    group = os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
+    group = _group_id()
     try:
         done = db.query("SELECT v FROM kv WHERE k='group_welcome'", one=True)
         if not done:

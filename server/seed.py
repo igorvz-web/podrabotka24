@@ -1,6 +1,8 @@
 import json
+import os
 import time
 
+from . import auth
 from . import db
 
 MIN = 60000
@@ -16,8 +18,14 @@ def backfill_cities():
 
 
 def seed():
-    """Заполняет БД демо-данными, если она пуста."""
+    """Заполняет БД демо-данными, если она пуста.
+
+    В проде (BOT_TOKEN задан) демо-данные не создаются, кроме случая
+    ALLOW_DEMO=1. backfill_cities() выполняется всегда — это ремонт данных.
+    """
     backfill_cities()
+    if auth.BOT_TOKEN and os.environ.get('ALLOW_DEMO', '') != '1':
+        return
     existing = db.query('SELECT COUNT(*) AS c FROM users')
     if existing and existing[0]['c']:
         ensure_demo_driver_order()
