@@ -33,7 +33,7 @@ def seed():
 
     now = int(time.time() * 1000)
 
-    auth = [
+    demo_users = [
         ('101', 'СтройЛогистика', 'stroy_log'),
         ('102', 'Анна', 'anna_move'),
         ('103', 'Офис-Менеджер', 'office_mng'),
@@ -49,7 +49,7 @@ def seed():
         ('113', 'Магазин «Вкусно»', 'shop_tasty'),
     ]
     author_ids = {}
-    for tg, name, username in auth:
+    for tg, name, username in demo_users:
         author_ids[tg] = db.execute(
             'INSERT INTO users (tg_id, name, username, photo, role, skills, created_at, last_login) VALUES (?,?,?,?,?,?,?,?)',
             (tg, name, username, '', 'customer', '["работодатель"]', now - 90000000, now - 90000000))
