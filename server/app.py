@@ -1022,11 +1022,10 @@ def _bot_welcome(chat_id):
         _tg_call('sendMessage', {
             'chat_id': chat_id,
             'text': 'Привет! Это бот «Подработка 24» 🤝\n\n'
-                    'Разместить объявление можно двумя способами:\n\n'
-                    '1️⃣ Прислать его мне одним сообщением в свободной форме — '
-                    'как вы написали бы в чат. Я покажу предпросмотр и опубликую в канале.\n\n'
-                    '2️⃣ Заполнить форму в приложении — кнопка «Открыть приложение».\n\n'
-                    'Найти подработку и откликнуться — тоже в приложении.',
+                    'Просто пришлите объявление одним сообщением в свободной форме — '
+                    'как вы написали бы в чат. Я проверю текст и сразу опубликую его в канале.\n\n'
+                    'Если хотите заполнить объявление по полям — откройте приложение '
+                    'по кнопке ниже. Там же можно найти подработку и откликнуться.',
             'reply_markup': json.dumps(markup)})
     except Exception:
         pass
@@ -1034,17 +1033,6 @@ def _bot_welcome(chat_id):
 
 # Короче этого — не объявление, а реплика в переписке
 _MIN_AD_LEN = 25
-
-
-def _kv_del(key):
-    try:
-        db.execute('DELETE FROM kv WHERE k=?', (key,))
-    except Exception:
-        pass
-
-
-def _draft_key(tg_id):
-    return 'draft_' + str(tg_id)
 
 
 def _bot_user(frm):
@@ -1067,47 +1055,6 @@ def _bot_user(frm):
     return db.query('SELECT * FROM users WHERE id=?', (new_id,), one=True)
 
 
-def _draft_preview(parsed):
-    """Что автор увидит перед публикацией: свой текст + как его понял разбор."""
-    price = (str(parsed['price']) + ' ₽') if parsed['price'] else 'по договорённости'
-    contact = ''
-    if parsed['phone']:
-        contact = parsed['phone']
-    elif parsed['contact']:
-        contact = '@' + parsed['contact']
-    rows = [
-        '📋 Так объявление появится в канале:',
-        '',
-        parsed['description'],
-        '',
-        '— — — — —',
-        'Разобрано для ленты приложения:',
-        '📦 ' + parsed['type'],
-        '👥 ' + str(parsed['people_count']) + ' чел.',
-        '💰 ' + price,
-        '🕐 ' + parsed['datetime'].replace('T', ' '),
-    ]
-    if parsed['city']:
-        rows.append('🏙 ' + parsed['city'])
-    if parsed['address']:
-        rows.append('📍 ' + parsed['address'])
-    if contact:
-        rows.append('☎️ ' + contact)
-    rows += ['', 'Всё верно — жмите «Опубликовать». Что-то не так — просто пришлите текст заново.']
-    return '\n'.join(rows)
-
-
-def _bot_channel_text(parsed, user):
-    """Текст для канала: объявление автора как есть, плюс контакт, если его не указали."""
-    rows = ['🆕 ' + parsed['type'], '', parsed['description']]
-    if not parsed['phone'] and not parsed['contact']:
-        if user.get('username'):
-            rows += ['', '✍️ Связаться: @' + user['username']]
-        else:
-            rows += ['', '✍️ Откликнуться можно в приложении по кнопке ниже']
-    return '\n'.join(rows)
-
-
 def _bot_ad_hint(chat_id):
     _tg_call('sendMessage', {
         'chat_id': chat_id,
@@ -1116,7 +1063,7 @@ def _bot_ad_hint(chat_id):
                 'Например:\n'
                 '«Нужны 2 грузчика на завтра, разгрузить фуру, ул. Северная 5, '
                 '2500 ₽ на человека, тел. 8 913 000-00-00»\n\n'
-                'Я проверю текст, покажу предпросмотр и опубликую в канале.'})
+                'Проверю текст и сразу опубликую в канале.'})
 
 
 def _bot_handle_message(msg):
@@ -1132,9 +1079,6 @@ def _bot_handle_message(msg):
     if text.startswith('/'):
         if text.startswith('/help') or text.startswith('/new'):
             _bot_ad_hint(chat_id)
-        elif text.startswith('/cancel'):
-            _kv_del(_draft_key((msg.get('from') or {}).get('id')))
-            _tg_call('sendMessage', {'chat_id': chat_id, 'text': 'Черновик удалён.'})
         return
 
     user = _bot_user(msg.get('from') or {})
@@ -1154,61 +1098,21 @@ def _bot_handle_message(msg):
         _tg_call('sendMessage', {'chat_id': chat_id, 'text': '🚫 ' + moderation.reason_text(bad)})
         return
 
+    # Публикуем сразу: в канал уходит текст автора как есть, разобранные поля
+    # наполняют ленту приложения
     parsed = adparse.parse(text)
-    _kv_set(_draft_key(user['tg_id']), json.dumps(parsed))
-    _tg_call('sendMessage', {
-        'chat_id': chat_id,
-        'text': _draft_preview(parsed),
-        'reply_markup': json.dumps({'inline_keyboard': [[
-            {'text': '✅ Опубликовать', 'callback_data': 'p24pub'},
-            {'text': '✖️ Отменить', 'callback_data': 'p24drop'},
-        ]]})})
-
-
-def _bot_publish_draft(cqid, chat_id, msg_id, tg_id):
-    """Публикует черновик: заказ в БД + карточка в канале."""
-    raw = _kv_get(_draft_key(tg_id))
-    if not raw:
-        _tg_call('answerCallbackQuery', {'callback_query_id': cqid,
-                                         'text': 'Черновик не найден — пришлите текст заново'})
-        return
-    user = db.query('SELECT * FROM users WHERE tg_id=?', (str(tg_id),), one=True)
-    if not user:
-        _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Профиль не найден'})
-        return
-    if user.get('blocked'):
-        _tg_call('answerCallbackQuery', {'callback_query_id': cqid,
-                                         'text': 'Аккаунт заблокирован модерацией'})
-        return
-    parsed = json.loads(raw)
-
-    # Повторная проверка: между черновиком и публикацией список запретов мог измениться
-    bad = moderation.find_violation(parsed['description'])
-    if bad:
-        _kv_del(_draft_key(tg_id))
-        _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Объявление отклонено'})
-        _tg_call('sendMessage', {'chat_id': chat_id, 'text': '🚫 ' + moderation.reason_text(bad)})
-        return
-
     data = dict(parsed)
-    data['show_phone'] = bool(parsed.get('phone'))
+    data['show_phone'] = bool(parsed['phone'])
     data['urgent'] = False
-    order_id = store_order(user['id'], data, channel_text=_bot_channel_text(parsed, user))
-    _kv_del(_draft_key(tg_id))
+    order_id = store_order(user['id'], data, channel_text=text)
 
-    _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Опубликовано'})
-    try:
-        _tg_call('editMessageReplyMarkup', {'chat_id': chat_id, 'message_id': msg_id,
-                                            'reply_markup': json.dumps({'inline_keyboard': []})})
-    except Exception:
-        pass
-    buttons = [[{'text': '🔒 Закрыть вакансию', 'callback_data': 'p24close_' + order_id}]]
     _tg_call('sendMessage', {
         'chat_id': chat_id,
         'text': '✅ Объявление опубликовано в канале.\n\n'
                 'Когда работник найдётся — нажмите «Закрыть вакансию», '
                 'и карточка в канале будет помечена как закрытая.',
-        'reply_markup': json.dumps({'inline_keyboard': buttons})})
+        'reply_markup': json.dumps({'inline_keyboard': [
+            [{'text': '🔒 Закрыть вакансию', 'callback_data': 'p24close_' + order_id}]]})})
 
 
 def _edit_group_card(order_id, suffix):
@@ -1277,16 +1181,6 @@ def _bot_handle_callback(cb):
         return
     if data.startswith('p24close_'):
         _bot_close_order(cqid, chat_id, msg_id, tg_id, data[len('p24close_'):])
-    elif data == 'p24pub':
-        _bot_publish_draft(cqid, chat_id, msg_id, tg_id)
-    elif data == 'p24drop':
-        _kv_del(_draft_key(tg_id))
-        _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Черновик удалён'})
-        try:
-            _tg_call('editMessageReplyMarkup', {'chat_id': chat_id, 'message_id': msg_id,
-                                                'reply_markup': json.dumps({'inline_keyboard': []})})
-        except Exception:
-            pass
 
 
 def pin_group_welcome():
