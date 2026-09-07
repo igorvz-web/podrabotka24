@@ -70,6 +70,18 @@ def _group_id():
     return os.environ.get('GROUP_ID', '').strip() or '@podrabotka_orders'
 
 
+def _build_commit():
+    """Короткий хеш развёрнутого коммита — видно в /api/health, какая версия в проде.
+
+    RENDER_GIT_COMMIT подставляет Render, остальные — на случай другого хостинга.
+    """
+    for key in ('RENDER_GIT_COMMIT', 'RAILWAY_GIT_COMMIT_SHA', 'SOURCE_COMMIT', 'GIT_COMMIT'):
+        val = os.environ.get(key, '').strip()
+        if val:
+            return val[:7]
+    return 'unknown'
+
+
 def post_to_channel(text, order_id=None, buttons=None):
     """Публикует заказ в группу-витрину (GROUP_ID). Возвращает message_id или None."""
     if not auth.BOT_TOKEN:
@@ -350,7 +362,9 @@ def health():
         db_ok = True
     except Exception:
         db_ok = False
-    return {'ok': True, 'db': db_ok, 'time': now_ms()}
+    return {'ok': True, 'db': db_ok, 'time': now_ms(),
+            'commit': _build_commit(), 'channel': _group_id(),
+            'botFlow': 'freeform-instant'}
 
 
 # --------------------------------------------------------------------------
