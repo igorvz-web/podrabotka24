@@ -8,3 +8,11 @@ __pycache__/
 1786677890.png
 1786681374.png
 1786681379.png
+.vercel
+.env*
+
+# Локальные артефакты (пустые файлы от ошибочного редиректа, логи vercel login)
+auth
+auth-wal
+vercel-login.err
+vercel-login.out
