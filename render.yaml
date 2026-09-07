@@ -1,0 +1,34 @@
+# Развёртывание на Render: New -> Blueprint -> выбрать этот репозиторий.
+# Секреты (sync: false) Render спросит при создании — они не хранятся в репозитории.
+services:
+  - type: web
+    name: podrabotka24
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      # Токен бота из @BotFather
+      - key: BOT_TOKEN
+        sync: false
+      # Ваши telegram id (числовые) через запятую — права администратора
+      - key: ADMIN_TG_IDS
+        sync: false
+      # Публичный адрес сервиса. Заполнить ПОСЛЕ первого деплоя,
+      # когда Render выдаст https://<имя>.onrender.com
+      - key: BASE_URL
+        sync: false
+      # PostgreSQL (Neon/Supabase). Без него SQLite, а он на Render эфемерный:
+      # данные пропадут при каждом редеплое и засыпании сервиса.
+      - key: P24_DB
+        sync: false
+      # Свои стоп-слова через запятую (в дополнение к встроенным)
+      - key: BANNED_WORDS
+        sync: false
+      - key: GROUP_ID
+        value: "@podrabotka_orders"
+      - key: BLOCK_THRESHOLD
+        value: "3"
+      - key: PYTHON_VERSION
+        value: "3.12.6"
