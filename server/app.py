@@ -505,11 +505,14 @@ def _order_channel_text(data):
             str(data['datetime']).replace('T', ' '))
 
 
-def store_order(uid, data, channel_text=None):
+def store_order(uid, data, channel_text=None, buttons=None):
     """Создаёт заказ, публикует в канал, уведомляет подписчиков.
 
     Общий путь для мини-аппа и бота: канал и лента приложения всегда наполняются
     вместе, чем бы объявление ни было создано.
+
+    buttons=[] убирает кнопку «Открыть заказ» под карточкой — так публикуются
+    объявления из бота, где контакты автор указывает прямо в тексте.
     """
     order_id = 'o_' + uuid.uuid4().hex[:8]
     db.execute(
@@ -521,7 +524,7 @@ def store_order(uid, data, channel_text=None):
          uid, now_ms(), 'open', data['city']))
     notify(uid, 'Заказ опубликован: «' + data['title'] + '»')
     text = channel_text or _order_channel_text(data)
-    mid = post_to_channel(text, order_id)
+    mid = post_to_channel(text, order_id, buttons)
     if mid:
         _kv_set('bot_msg_' + order_id, json.dumps({'msg_id': mid, 'text': text}))
     try:
@@ -1113,12 +1116,13 @@ def _bot_handle_message(msg):
         return
 
     # Публикуем сразу: в канал уходит текст автора как есть, разобранные поля
-    # наполняют ленту приложения
+    # наполняют ленту приложения. Кнопки «Открыть заказ» нет — объявление из бота
+    # самодостаточно, контакты автор указывает прямо в тексте.
     parsed = adparse.parse(text)
     data = dict(parsed)
     data['show_phone'] = bool(parsed['phone'])
     data['urgent'] = False
-    order_id = store_order(user['id'], data, channel_text=text)
+    order_id = store_order(user['id'], data, channel_text=text, buttons=[])
 
     _tg_call('sendMessage', {
         'chat_id': chat_id,
