@@ -10,8 +10,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from . import adparse
 from . import auth
 from . import db
+from . import moderation
 from . import seed
 
 WEB_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -64,7 +66,8 @@ def tg_push(user_id, text, order_id=None):
 
 
 def _group_id():
-    return os.environ.get('GROUP_ID', '').strip() or '@podrabotka_365'
+    """Канал-витрина. Переопределяется переменной окружения GROUP_ID."""
+    return os.environ.get('GROUP_ID', '').strip() or '@podrabotka_orders'
 
 
 def post_to_channel(text, order_id=None, buttons=None):
@@ -481,6 +484,41 @@ def get_order(order_id: str, uid: int = Depends(get_current_user)):
     return order_payload(o)
 
 
+def _order_channel_text(data):
+    """Карточка для канала из структурированной формы (мини-апп)."""
+    return ('🆕 Новый заказ\n\n«' + data['title'] + '»\n📦 ' + data['type'] +
+            '\n🏙 ' + (data['city'] or '—') + '\n💰 ' + str(data['price']) + ' ₽\n🕐 ' +
+            str(data['datetime']).replace('T', ' '))
+
+
+def store_order(uid, data, channel_text=None):
+    """Создаёт заказ, публикует в канал, уведомляет подписчиков.
+
+    Общий путь для мини-аппа и бота: канал и лента приложения всегда наполняются
+    вместе, чем бы объявление ни было создано.
+    """
+    order_id = 'o_' + uuid.uuid4().hex[:8]
+    db.execute(
+        'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status, city) '
+        'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        (order_id, data['type'], data['title'], data['description'], data['address'],
+         int(data['price']), int(data['people_count']), 1 if data.get('urgent') else 0,
+         1 if data.get('show_phone') else 0, data.get('phone', ''), data['datetime'],
+         uid, now_ms(), 'open', data['city']))
+    notify(uid, 'Заказ опубликован: «' + data['title'] + '»')
+    text = channel_text or _order_channel_text(data)
+    mid = post_to_channel(text, order_id)
+    if mid:
+        _kv_set('bot_msg_' + order_id, json.dumps({'msg_id': mid, 'text': text}))
+    try:
+        notify_subscribers({'id': order_id, 'author_id': uid, 'title': data['title'],
+                            'city': data['city'], 'type': data['type'],
+                            'price': str(data['price'])})
+    except Exception:
+        pass
+    return order_id
+
+
 @app.post('/api/orders')
 def create_order(body: dict = None, uid: int = Depends(get_current_user)):
     u = _me(uid)
@@ -492,28 +530,24 @@ def create_order(body: dict = None, uid: int = Depends(get_current_user)):
         if not body.get(field):
             raise HTTPException(400, 'Не заполнено поле: ' + field)
 
-    order_id = 'o_' + uuid.uuid4().hex[:8]
-    db.execute(
-        'INSERT INTO orders (id, type, title, description, address, price, people_count, urgent, show_phone, phone, datetime, author_id, created_at, status, city) '
-        'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        (order_id, str(body['type']), str(body['title']).strip(), str(body.get('description', '') or '').strip(),
-         str(body['address']).strip(), int(body['price']), int(body.get('peopleCount', 1)),
-         1 if body.get('urgent') else 0, 1 if body.get('showPhone') else 0,
-         str(body.get('phone', '') or ''), str(body['datetime']), uid, now_ms(), 'open',
-         str(body.get('city', '') or '').strip()))
-    notify(uid, 'Заказ опубликован: «' + str(body['title']).strip() + '»')
-    city = str(body.get('city', '') or '').strip()
-    text = ('🆕 Новый заказ\n\n«' + str(body['title']).strip() + '»\n📦 ' + str(body['type']) +
-            '\n🏙 ' + (city or '—') + '\n💰 ' + str(body['price']) + ' ₽\n🕐 ' +
-            str(body['datetime']).replace('T', ' '))
-    mid = post_to_channel(text, order_id)
-    if mid:
-        _kv_set('bot_msg_' + order_id, json.dumps({'msg_id': mid, 'text': text}))
-    try:
-        notify_subscribers({'id': order_id, 'author_id': uid, 'title': str(body['title']).strip(),
-                            'city': city, 'type': str(body['type']), 'price': str(body['price'])})
-    except Exception:
-        pass
+    data = {
+        'type': str(body['type']),
+        'title': str(body['title']).strip(),
+        'description': str(body.get('description', '') or '').strip(),
+        'address': str(body['address']).strip(),
+        'price': int(body['price']),
+        'people_count': int(body.get('peopleCount', 1)),
+        'urgent': bool(body.get('urgent')),
+        'show_phone': bool(body.get('showPhone')),
+        'phone': str(body.get('phone', '') or ''),
+        'datetime': str(body['datetime']),
+        'city': str(body.get('city', '') or '').strip(),
+    }
+    bad = moderation.find_violation(data['title'], data['description'], data['address'])
+    if bad:
+        raise HTTPException(400, moderation.reason_text(bad))
+
+    order_id = store_order(uid, data)
     return mutation_result(order_id, uid)
 
 
@@ -952,7 +986,8 @@ def _tg_poll_once():
 
 
 # --------------------------------------------------------------------------
-# Бот в ЛС: приветствие + направление в приложение (заявки сообщениями не принимаются)
+# Бот в ЛС: приём объявлений свободным текстом, проверка модерацией,
+# предпросмотр и публикация в канал
 # --------------------------------------------------------------------------
 
 
@@ -987,11 +1022,101 @@ def _bot_welcome(chat_id):
         _tg_call('sendMessage', {
             'chat_id': chat_id,
             'text': 'Привет! Это бот «Подработка 24» 🤝\n\n'
-                    'Разместить вакансию или найти подработку можно в приложении — '
-                    'откройте его по кнопке «Открыть приложение».',
+                    'Разместить объявление можно двумя способами:\n\n'
+                    '1️⃣ Прислать его мне одним сообщением в свободной форме — '
+                    'как вы написали бы в чат. Я покажу предпросмотр и опубликую в канале.\n\n'
+                    '2️⃣ Заполнить форму в приложении — кнопка «Открыть приложение».\n\n'
+                    'Найти подработку и откликнуться — тоже в приложении.',
             'reply_markup': json.dumps(markup)})
     except Exception:
         pass
+
+
+# Короче этого — не объявление, а реплика в переписке
+_MIN_AD_LEN = 25
+
+
+def _kv_del(key):
+    try:
+        db.execute('DELETE FROM kv WHERE k=?', (key,))
+    except Exception:
+        pass
+
+
+def _draft_key(tg_id):
+    return 'draft_' + str(tg_id)
+
+
+def _bot_user(frm):
+    """Находит или создаёт пользователя по данным Telegram-сообщения."""
+    tg_id = str(frm.get('id') or '')
+    if not tg_id:
+        return None
+    name = ((frm.get('first_name') or '') + ' ' + (frm.get('last_name') or '')).strip()
+    username = frm.get('username') or ''
+    row = db.query('SELECT * FROM users WHERE tg_id=?', (tg_id,), one=True)
+    if row:
+        db.execute('UPDATE users SET name=?, username=?, last_login=? WHERE id=?',
+                   (name or row['name'], username, now_ms(), row['id']))
+        return db.query('SELECT * FROM users WHERE id=?', (row['id'],), one=True)
+    new_id = db.execute(
+        'INSERT INTO users (tg_id, name, username, photo, role, skills, is_admin, created_at, last_login) '
+        'VALUES (?,?,?,?,?,?,?,?,?)',
+        (tg_id, name or 'Пользователь', username, '', 'both', '["разнорабочий"]',
+         1 if _compute_admin(tg_id) else 0, now_ms(), now_ms()))
+    return db.query('SELECT * FROM users WHERE id=?', (new_id,), one=True)
+
+
+def _draft_preview(parsed):
+    """Что автор увидит перед публикацией: свой текст + как его понял разбор."""
+    price = (str(parsed['price']) + ' ₽') if parsed['price'] else 'по договорённости'
+    contact = ''
+    if parsed['phone']:
+        contact = parsed['phone']
+    elif parsed['contact']:
+        contact = '@' + parsed['contact']
+    rows = [
+        '📋 Так объявление появится в канале:',
+        '',
+        parsed['description'],
+        '',
+        '— — — — —',
+        'Разобрано для ленты приложения:',
+        '📦 ' + parsed['type'],
+        '👥 ' + str(parsed['people_count']) + ' чел.',
+        '💰 ' + price,
+        '🕐 ' + parsed['datetime'].replace('T', ' '),
+    ]
+    if parsed['city']:
+        rows.append('🏙 ' + parsed['city'])
+    if parsed['address']:
+        rows.append('📍 ' + parsed['address'])
+    if contact:
+        rows.append('☎️ ' + contact)
+    rows += ['', 'Всё верно — жмите «Опубликовать». Что-то не так — просто пришлите текст заново.']
+    return '\n'.join(rows)
+
+
+def _bot_channel_text(parsed, user):
+    """Текст для канала: объявление автора как есть, плюс контакт, если его не указали."""
+    rows = ['🆕 ' + parsed['type'], '', parsed['description']]
+    if not parsed['phone'] and not parsed['contact']:
+        if user.get('username'):
+            rows += ['', '✍️ Связаться: @' + user['username']]
+        else:
+            rows += ['', '✍️ Откликнуться можно в приложении по кнопке ниже']
+    return '\n'.join(rows)
+
+
+def _bot_ad_hint(chat_id):
+    _tg_call('sendMessage', {
+        'chat_id': chat_id,
+        'text': 'Чтобы разместить объявление, пришлите его одним сообщением в свободной форме — '
+                'как вы написали бы в чат.\n\n'
+                'Например:\n'
+                '«Нужны 2 грузчика на завтра, разгрузить фуру, ул. Северная 5, '
+                '2500 ₽ на человека, тел. 8 913 000-00-00»\n\n'
+                'Я проверю текст, покажу предпросмотр и опубликую в канале.'})
 
 
 def _bot_handle_message(msg):
@@ -1005,17 +1130,85 @@ def _bot_handle_message(msg):
         _bot_welcome(chat_id)
         return
     if text.startswith('/'):
+        if text.startswith('/help') or text.startswith('/new'):
+            _bot_ad_hint(chat_id)
+        elif text.startswith('/cancel'):
+            _kv_del(_draft_key((msg.get('from') or {}).get('id')))
+            _tg_call('sendMessage', {'chat_id': chat_id, 'text': 'Черновик удалён.'})
         return
-    # Заявки сообщениями не принимаются — направляем в приложение
+
+    user = _bot_user(msg.get('from') or {})
+    if not user:
+        return
+    if user.get('blocked'):
+        _tg_call('sendMessage', {
+            'chat_id': chat_id,
+            'text': '⛔️ Ваш аккаунт заблокирован модерацией, публикация недоступна.'})
+        return
+    if len(text) < _MIN_AD_LEN:
+        _bot_ad_hint(chat_id)
+        return
+
+    bad = moderation.find_violation(text)
+    if bad:
+        _tg_call('sendMessage', {'chat_id': chat_id, 'text': '🚫 ' + moderation.reason_text(bad)})
+        return
+
+    parsed = adparse.parse(text)
+    _kv_set(_draft_key(user['tg_id']), json.dumps(parsed))
+    _tg_call('sendMessage', {
+        'chat_id': chat_id,
+        'text': _draft_preview(parsed),
+        'reply_markup': json.dumps({'inline_keyboard': [[
+            {'text': '✅ Опубликовать', 'callback_data': 'p24pub'},
+            {'text': '✖️ Отменить', 'callback_data': 'p24drop'},
+        ]]})})
+
+
+def _bot_publish_draft(cqid, chat_id, msg_id, tg_id):
+    """Публикует черновик: заказ в БД + карточка в канале."""
+    raw = _kv_get(_draft_key(tg_id))
+    if not raw:
+        _tg_call('answerCallbackQuery', {'callback_query_id': cqid,
+                                         'text': 'Черновик не найден — пришлите текст заново'})
+        return
+    user = db.query('SELECT * FROM users WHERE tg_id=?', (str(tg_id),), one=True)
+    if not user:
+        _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Профиль не найден'})
+        return
+    if user.get('blocked'):
+        _tg_call('answerCallbackQuery', {'callback_query_id': cqid,
+                                         'text': 'Аккаунт заблокирован модерацией'})
+        return
+    parsed = json.loads(raw)
+
+    # Повторная проверка: между черновиком и публикацией список запретов мог измениться
+    bad = moderation.find_violation(parsed['description'])
+    if bad:
+        _kv_del(_draft_key(tg_id))
+        _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Объявление отклонено'})
+        _tg_call('sendMessage', {'chat_id': chat_id, 'text': '🚫 ' + moderation.reason_text(bad)})
+        return
+
+    data = dict(parsed)
+    data['show_phone'] = bool(parsed.get('phone'))
+    data['urgent'] = False
+    order_id = store_order(user['id'], data, channel_text=_bot_channel_text(parsed, user))
+    _kv_del(_draft_key(tg_id))
+
+    _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Опубликовано'})
     try:
-        _tg_call('sendMessage', {'chat_id': chat_id,
-                                 'text': 'Заявки и вакансии размещаются в приложении «Подработка 24» — '
-                                         'откройте его по кнопке ниже.',
-                                 'reply_markup': json.dumps({'inline_keyboard': [
-                                     [{'text': 'Открыть приложение',
-                                       'url': (auth.BASE_URL or '').rstrip('/') + '/'}]]})})
+        _tg_call('editMessageReplyMarkup', {'chat_id': chat_id, 'message_id': msg_id,
+                                            'reply_markup': json.dumps({'inline_keyboard': []})})
     except Exception:
         pass
+    buttons = [[{'text': '🔒 Закрыть вакансию', 'callback_data': 'p24close_' + order_id}]]
+    _tg_call('sendMessage', {
+        'chat_id': chat_id,
+        'text': '✅ Объявление опубликовано в канале.\n\n'
+                'Когда работник найдётся — нажмите «Закрыть вакансию», '
+                'и карточка в канале будет помечена как закрытая.',
+        'reply_markup': json.dumps({'inline_keyboard': buttons})})
 
 
 def _edit_group_card(order_id, suffix):
@@ -1084,6 +1277,16 @@ def _bot_handle_callback(cb):
         return
     if data.startswith('p24close_'):
         _bot_close_order(cqid, chat_id, msg_id, tg_id, data[len('p24close_'):])
+    elif data == 'p24pub':
+        _bot_publish_draft(cqid, chat_id, msg_id, tg_id)
+    elif data == 'p24drop':
+        _kv_del(_draft_key(tg_id))
+        _tg_call('answerCallbackQuery', {'callback_query_id': cqid, 'text': 'Черновик удалён'})
+        try:
+            _tg_call('editMessageReplyMarkup', {'chat_id': chat_id, 'message_id': msg_id,
+                                                'reply_markup': json.dumps({'inline_keyboard': []})})
+        except Exception:
+            pass
 
 
 def pin_group_welcome():
@@ -1119,11 +1322,13 @@ def pin_group_welcome():
                 pass
             db.execute("INSERT INTO kv (k, v) VALUES ('group_welcome', '1')")
         bot_username = auth.get_bot_username() or None
-        inv = db.query("SELECT v FROM kv WHERE k='group_invite_v3'", one=True)
+        inv = db.query("SELECT v FROM kv WHERE k='group_invite_v4'", one=True)
         if not inv and bot_username:
             invite_text = ('💼 Хотите разместить вакансию или подработку?\n\n'
-                           'Просто откройте приложение по кнопке «Подработка 24», '
-                           'разместите вакансию — и мы сразу опубликуем её в группе.')
+                           'Напишите боту @' + bot_username + ' одним сообщением в свободной '
+                           'форме — что за работа, где, сколько платите и как с вами связаться. '
+                           'Бот проверит текст и опубликует объявление здесь.\n\n'
+                           'Либо заполните форму в приложении — кнопка ниже.')
             invite_markup = json.dumps({
                 'inline_keyboard': [[{'text': 'Подработка 24',
                                       'url': (auth.BASE_URL or '').rstrip('/') + '/'}]]
@@ -1138,17 +1343,18 @@ def pin_group_welcome():
                 urllib.request.urlopen(req, timeout=8)
             except Exception:
                 pass
-            db.execute("INSERT INTO kv (k, v) VALUES ('group_invite_v3', '1')")
+            db.execute("INSERT INTO kv (k, v) VALUES ('group_invite_v4', '1')")
         # То же сообщение — в ЛС бота администраторам
-        adm_inv = db.query("SELECT v FROM kv WHERE k='group_invite_admin_v3'", one=True)
+        adm_inv = db.query("SELECT v FROM kv WHERE k='group_invite_admin_v4'", one=True)
         if not adm_inv:
             sent = False
             for chat_id in _admin_tg_ids():
                 try:
                     payload = {'chat_id': chat_id,
                                'text': ('💼 Хотите разместить вакансию или подработку?\n\n'
-                                        'Просто откройте приложение по кнопке «Подработка 24», '
-                                        'разместите вакансию — и мы сразу опубликуем её в группе.'),
+                                        'Пришлите мне объявление одним сообщением в свободной '
+                                        'форме — я проверю текст и опубликую его в канале. '
+                                        'Либо заполните форму в приложении — кнопка ниже.'),
                                'reply_markup': json.dumps({
                                    'inline_keyboard': [[{'text': 'Подработка 24',
                                                          'url': (auth.BASE_URL or '').rstrip('/') + '/'}]]
@@ -1161,7 +1367,7 @@ def pin_group_welcome():
                     sent = True
                 except Exception:
                     pass
-            db.execute("INSERT INTO kv (k, v) VALUES ('group_invite_admin_v3', '1')")
+            db.execute("INSERT INTO kv (k, v) VALUES ('group_invite_admin_v4', '1')")
     except Exception:
         pass
 
